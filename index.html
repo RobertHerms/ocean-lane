@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocean Lane Walkthrough</title>
+<style>
+  :root { --panel: rgba(20, 18, 16, 0.66); --ink: #f4efe6; --muted: #bdb3a4; --accent: #f0b35a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1916; color: var(--ink);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #view { display: block; width: 100vw; height: 100vh; outline: none; cursor: grab; }
+  #view:active { cursor: grabbing; }
+  .panel { position: fixed; background: var(--panel); border-radius: 10px; backdrop-filter: blur(6px); }
+  .hidden { display: none !important; }
+  #loc { top: 14px; left: 14px; padding: 8px 14px; display: flex; flex-direction: column; }
+  #loc span { font-weight: 650; font-size: 16px; }
+  #loc small { color: var(--muted); font-size: 12px; letter-spacing: .03em; text-transform: uppercase; }
+  #map { position: fixed; top: 14px; right: 14px; width: 220px; height: 262px; background: var(--panel); border-radius: 10px; }
+  #hint { left: 50%; bottom: 26px; transform: translateX(-50%); padding: 9px 16px; transition: opacity .15s; opacity: 0; white-space: nowrap; }
+  #hint b { color: var(--accent); border: 1px solid rgba(240,179,90,.5); border-radius: 4px; padding: 0 5px; font-weight: 600; }
+  #help { left: 14px; bottom: 14px; padding: 10px 14px; font-size: 12.5px; color: var(--muted); }
+  #help b { color: var(--ink); font-weight: 600; }
+  #help div { margin: 1px 0; }
+  #warn { left: 50%; top: 14px; transform: translateX(-50%); padding: 8px 14px; color: #ffd28a; font-size: 13px; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%;
+    background: rgba(255,255,255,.7); box-shadow: 0 0 0 1px rgba(0,0,0,.3); pointer-events: none; }
+  #start { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(27,25,22,.8), rgba(27,25,22,.96)); }
+  #start .card { max-width: 470px; padding: 28px 30px; background: #26231f; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  #start h1 { margin: 0 0 6px; font-size: 24px; }
+  #start p { margin: 0 0 14px; color: var(--muted); }
+  #start table { border-collapse: collapse; margin-bottom: 16px; width: 100%; }
+  #start td { padding: 3px 0; vertical-align: top; }
+  #start td:first-child { width: 150px; color: var(--ink); font-weight: 600; }
+  #start td:last-child { color: var(--muted); }
+  #go { font: inherit; font-weight: 650; background: var(--accent); color: #231a0c; border: 0; border-radius: 8px; padding: 10px 20px; cursor: pointer; }
+  #go:disabled { opacity: .45; cursor: wait; }
+  #loading { margin-left: 12px; color: var(--muted); font-size: 12.5px; }
+  @media (max-width: 700px) { #map { width: 150px; height: 179px; } #help { display: none; } }
+</style>
+<script type="importmap">
+  { "imports": {
+      "three": "./vendor/three/build/three.module.js",
+      "three/examples/jsm/": "./vendor/three/examples/jsm/",
+      "three/addons/": "./vendor/three/examples/jsm/",
+      "three-mesh-bvh": "./vendor/three-mesh-bvh.module.js"
+  } }
+</script>
+</head>
+<body>
+<canvas id="view" tabindex="0"></canvas>
+<div id="crosshair"></div>
+<div id="loc" class="panel"><span>Front walk</span><small>Outside</small></div>
+<canvas id="map"></canvas>
+<div id="hint" class="panel"></div>
+<div id="warn" class="panel hidden">Lighting hasn't been baked for this layout yet — open bake.html first.</div>
+<div id="help" class="panel">
+  <div><b>↑ / ↓</b> walk forward / back</div>
+  <div><b>← / →</b> turn left / right</div>
+  <div><b>Shift + ← / →</b> (or A / D) sidestep</div>
+  <div><b>PgUp / PgDn</b> (or R / F, or drag) look up / down</div>
+  <div><b>Space</b> open / close the door you face</div>
+  <div><b>M</b> map &nbsp; <b>C</b> level view &nbsp; <b>H</b> hide help</div>
+</div>
+<div id="start">
+  <div class="card">
+    <h1>Ocean Lane walkthrough</h1>
+    <p>You're standing just inside the front door. Two kids are wandering around the house somewhere.</p>
+    <table>
+      <tr><td>↑ / ↓</td><td>Walk forward / back</td></tr>
+      <tr><td>← / →</td><td>Turn</td></tr>
+      <tr><td>Shift + ← / →</td><td>Sidestep (also A / D)</td></tr>
+      <tr><td>PgUp / PgDn</td><td>Look up / down (also R / F or drag the mouse)</td></tr>
+      <tr><td>Space</td><td>Open / close a door or garage door</td></tr>
+      <tr><td>M · H · C</td><td>Map · help · level your view</td></tr>
+    </table>
+    <button id="go" disabled>Start walking</button><span id="loading">Loading…</span>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
