@@ -68,6 +68,7 @@ function parse(key) {
   const [kind, hex] = key.split(':');
   if (kind === 'paint') return { color: hex, roughness: 0.9 };
   if (kind === 'fabric') return { color: hex, roughness: 0.95, normalMap: 'carpet_beige_normal.jpg', repeat: 0.7, normalScale: 0.35 };
+  if (kind === 'art') return { color: '#ffffff', roughness: 0.55, procedural: key, albedo: [0.45, 0.45, 0.45], alphaTest: hex === 'nautical' ? 0.5 : 0 };
   if (kind === 'stain') {
     // oak grain from the stair treads (photo 51), re-tinted to the furniture's stain colour
     const c = new THREE.Color(hex), tread = [0.135, 0.058, 0.034];
@@ -118,6 +119,11 @@ function proceduralTexture(kind) {
     }
     g.globalAlpha = 0.05;
     for (let i = 0; i < 4000; i++) { g.fillStyle = rnd() < 0.5 ? '#fff' : '#9a917f'; g.fillRect(rnd() * 512, rnd() * 512, 8 + rnd() * 30, 1); }
+  } else if (kind.startsWith('art:')) {
+    const t = new THREE.CanvasTexture(drawArt(c, g, kind.slice(4), rnd));
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
+    cache.set(kind, t);
+    return t;
   } else if (kind === 'msRachel') {
     // title card for the playroom TV: the show's name in big rounded letters on a sunny backdrop
     c.width = 1024; c.height = 564;
@@ -179,6 +185,97 @@ function proceduralTexture(kind) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
   cache.set(kind, t);
   return t;
+}
+
+// Generic wall art, drawn in the spirit of what hangs in the house (photos 1-50): soft abstracts,
+// black-and-white landscapes, seascapes, nursery prints. Nothing personal is reproduced.
+function drawArt(c, g, style, rnd) {
+  const W = 512, H = 512;
+  c.width = W; c.height = H;
+  const R = (a, b) => a + (b - a) * rnd();
+  const grad = (stops, x0 = 0, y0 = 0, x1 = 0, y1 = H) => { const q = g.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, col]) => q.addColorStop(o, col)); return q; };
+  const fill = col => { g.fillStyle = col; g.fillRect(0, 0, W, H); };
+  const anchor = (x, y, s, col) => {
+    g.save(); g.translate(x, y); g.scale(s, s); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 9; g.lineCap = 'round';
+    g.beginPath(); g.arc(0, -78, 14, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(0, -64); g.lineTo(0, 78); g.stroke();
+    g.beginPath(); g.moveTo(-40, -38); g.lineTo(40, -38); g.stroke();
+    g.beginPath(); g.arc(0, 18, 62, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+    for (const sx of [-1, 1]) { g.beginPath(); g.moveTo(sx * 60, 42); g.lineTo(sx * 72, 26); g.lineTo(sx * 46, 32); g.fill(); }
+    g.restore();
+  };
+  const whale = (x, y, s, col) => {
+    g.save(); g.translate(x, y); g.scale(s, s); g.fillStyle = col;
+    g.beginPath(); g.moveTo(-90, 10); g.bezierCurveTo(-90, -45, 20, -60, 60, -20); g.bezierCurveTo(75, -5, 85, 0, 100, -30);
+    g.bezierCurveTo(105, -10, 110, 5, 120, 10); g.bezierCurveTo(105, 12, 95, 14, 85, 22); g.bezierCurveTo(40, 55, -60, 60, -90, 10); g.fill();
+    g.strokeStyle = col; g.lineWidth = 5; g.lineCap = 'round';
+    for (const a of [-0.5, 0, 0.5]) { g.beginPath(); g.moveTo(-40, -52); g.quadraticCurveTo(-40 + a * 30, -80, -40 + a * 45, -95); g.stroke(); }
+    g.fillStyle = '#f4f2ec'; g.beginPath(); g.arc(-55, -5, 5, 0, Math.PI * 2); g.fill();
+    g.restore();
+  };
+  const heart = (x, y, s, col) => {
+    g.fillStyle = col; g.beginPath(); g.moveTo(x, y + s * 0.9);
+    g.bezierCurveTo(x - s * 1.6, y - s * 0.1, x - s * 0.8, y - s * 1.3, x, y - s * 0.4);
+    g.bezierCurveTo(x + s * 0.8, y - s * 1.3, x + s * 1.6, y - s * 0.1, x, y + s * 0.9); g.fill();
+  };
+  const sail = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.55, y); g.lineTo(x, y); g.fill(); g.beginPath(); g.moveTo(x - 2, y - s * 0.8); g.lineTo(x - s * 0.35, y); g.lineTo(x - 2, y); g.fill(); };
+  if (style === 'abstract') {
+    fill(grad([[0, '#e9eaec'], [1, '#cfd3d9']]));
+    for (let i = 0; i < 90; i++) {
+      const cols = ['#ffffff', '#b9bec7', '#9aa1ad', '#d9d2e3', '#c8ced8', '#7d8594'];
+      g.strokeStyle = cols[i % cols.length]; g.globalAlpha = R(0.12, 0.45); g.lineWidth = R(4, 40); g.lineCap = 'round';
+      const y0 = R(-50, H + 50);
+      g.beginPath(); g.moveTo(-20, y0); g.bezierCurveTo(W * 0.3, y0 + R(-160, 160), W * 0.6, y0 + R(-160, 160), W + 20, y0 + R(-100, 100)); g.stroke();
+    }
+  } else if (style === 'flower') {
+    fill('#fbf8f4');
+    g.strokeStyle = '#6f9a5f'; g.lineWidth = 8; g.beginPath(); g.moveTo(256, 470); g.quadraticCurveTo(240, 350, 256, 240); g.stroke();
+    g.fillStyle = '#7fae6c'; g.beginPath(); g.ellipse(215, 370, 45, 16, -0.6, 0, Math.PI * 2); g.fill();
+    for (const [dx, col] of [[-38, '#f3a3bf'], [38, '#f3a3bf'], [0, '#ee86a9']]) { g.fillStyle = col; g.beginPath(); g.ellipse(256 + dx, 190, 42, 78, dx / 120, 0, Math.PI * 2); g.fill(); }
+  } else if (style.startsWith('bw')) {
+    // black-and-white landscape: sky, layered hills, still water
+    const v = style.length > 2 ? +style[2] : 1;
+    fill(grad([[0, '#d8d8d8'], [0.55, '#a9a9a9'], [1, '#2f2f2f']]));
+    for (let k = 0; k < 4; k++) {
+      const base = H * (0.45 + k * 0.08), sh = 190 - k * 35;
+      g.fillStyle = `rgb(${sh},${sh},${sh})`; g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W; x += 16) g.lineTo(x, base - 40 * Math.sin(x / (60 + v * 17 + k * 23) + v + k) - R(0, 10));
+      g.lineTo(W, H); g.fill();
+    }
+    g.fillStyle = 'rgba(40,40,40,0.8)';
+    for (let i = 0; i < 12; i++) { const x = R(0, W), y = H * 0.75 + R(-10, 20), h = R(40, 110); g.beginPath(); g.moveTo(x, y - h); g.lineTo(x + h * 0.18, y); g.lineTo(x - h * 0.18, y); g.fill(); }
+  } else if (style === 'seascape' || style === 'beach' || style === 'panorama') {
+    const [sky, sea, low] = style === 'seascape' ? [['#9aa3ad', '#dfe3e6'], '#5f6f7d', '#3d4a55'] : style === 'beach' ? [['#dfe8ee', '#f3f1ea'], '#9fbccb', '#e9dcc3'] : [['#e7dcc6', '#d4c3a3'], '#a58f6b', '#6d5a40'];
+    fill(grad([[0, sky[0]], [0.55, sky[1]], [0.56, sea], [1, low]]));
+    g.lineCap = 'round';
+    for (let i = 0; i < 70; i++) {
+      const y = H * R(0.58, 0.98); g.strokeStyle = `rgba(255,255,255,${R(0.1, 0.5)})`; g.lineWidth = R(2, 7);
+      g.beginPath(); const x = R(-60, W); g.moveTo(x, y); g.quadraticCurveTo(x + 60, y - R(4, 14), x + R(90, 200), y); g.stroke();
+    }
+    if (style === 'beach') { g.fillStyle = '#e9dcc3'; g.beginPath(); g.moveTo(0, H); g.lineTo(0, H * 0.84); g.quadraticCurveTo(W * 0.5, H * 0.78, W, H * 0.88); g.lineTo(W, H); g.fill(); }
+    if (style === 'panorama') { g.fillStyle = '#5a4832'; for (let x = 0; x < W; x += 22) g.fillRect(x, H * 0.46 - R(10, 60), 16, R(10, 60) + 6); }
+  } else if (style === 'anchor') { fill('#fbfbf9'); anchor(256, 270, 1.35, '#1f2d4d'); }
+  else if (style === 'whale') { fill('#fbfbf9'); whale(256, 290, 1.5, '#1f2d4d'); }
+  else if (style === 'sailboat') { fill(grad([[0, '#eef3f7'], [0.7, '#cfe0ea'], [0.71, '#5d86a8'], [1, '#3e6283']])); sail(256, 350, 200, '#ffffff'); g.fillStyle = '#1f2d4d'; g.fillRect(200, 350, 120, 20); }
+  else if (style === 'sailboats') {
+    fill(grad([[0, '#dbe8f3'], [0.55, '#b9d2e6'], [0.56, '#3f78b2'], [1, '#1d4a7c']]));
+    for (let i = 0; i < 7; i++) sail(R(40, 470), H * R(0.56, 0.66) + i * 8, R(90, 190), i % 3 ? '#ffffff' : '#e8eef4');
+    g.lineCap = 'round';
+    for (let i = 0; i < 60; i++) { g.strokeStyle = `rgba(255,255,255,${R(0.1, 0.45)})`; g.lineWidth = R(2, 5); const x = R(0, W), y = H * R(0.66, 0.98); g.beginPath(); g.moveTo(x, y); g.lineTo(x + R(20, 70), y); g.stroke(); }
+  } else if (style === 'hearts') {
+    fill('#fbf8f7');
+    const cols = ['#f2a7c3', '#c7a4e0', '#8fd3cf', '#f7b39a', '#b39ddb', '#f48fb1', '#80cbc4', '#ce93d8', '#ffab91'];
+    for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) heart(128 + q * 128, 128 + r * 128, 40, cols[r * 3 + q]);
+  } else if (style === 'stripes') {
+    const cols = ['#f4a9c6', '#fbd3e2', '#c5a3e0', '#e6d8f3', '#8fd3cf', '#d6f0ee'];
+    for (let i = 0; i < 6; i++) { g.fillStyle = cols[i]; g.fillRect(0, i * H / 6, W, H / 6 + 1); }
+    g.fillStyle = '#ffffff'; g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 40 : 95; g.lineTo(256 + r * Math.cos(a), 256 + r * Math.sin(a)); } g.fill();
+  } else if (style === 'nautical') {
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = '#dfe3ea'; g.beginPath(); g.moveTo(300, 40); g.lineTo(430, 380); g.lineTo(300, 380); g.fill();   // pale sail
+    whale(190, 360, 0.9, '#1f2d4d'); anchor(370, 380, 0.75, '#1f2d4d');
+  } else fill('#cccccc');
+  return c;
 }
 
 // Average linear albedo of a material (used by the light baker for bounce light).
@@ -244,6 +341,7 @@ export function makeMaterial(key, variant, lightMap) {
   }
   if (d.normalScale) m.normalScale.set(d.normalScale, d.normalScale);
   if (d.emissive) { m.emissive.set(d.emissive); m.emissiveIntensity = d.emissiveIntensity ?? 1; }
+  if (d.alphaTest) m.alphaTest = d.alphaTest;
   if (d.glow) { m.toneMapped = true; }
   if (variant === 'lm' && lightMap) { m.lightMap = lightMap; m.lightMapIntensity = 1; }
   if (variant === 'vx') {

@@ -118,7 +118,7 @@ export const WALLS = [
   wz(35, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),
   wx(-8, 35, 45, [0, annexCeil(-8)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),
   // ---- rear stair annex ----
-  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(39.1, 42.0, 0, 8)]),     // opening flush with the stair's knee wall and closet wall
+  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(39.1, 42.0, 0, LOW_CEIL)]),   // opening flush with the stair walls, full height (no header)
   wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)]),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
   wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3)]),
@@ -185,9 +185,9 @@ export const RAILINGS = [
 ];
 // Wall-mounted handrails: [x0,z0,x1,z1, h0,h1] (absolute rail height at each end)
 export const HANDRAILS = [
-  [21.2, FD.z0 + 0.1, 21.2, FD.z1 - TREAD, LOW + 0.7 + 2.8, FRONT + 2.8],
-  [41.8, -4.4, 41.8, 0, MID + 2.9, LOW + 2.9],
-  [35.45, -4.4, 35.45, -0.2, MID + 2.9, MAIN + 2.9],
+  [21.3, FD.z0 + 0.1, 21.3, FD.z1 - TREAD, LOW + 0.7 + 2.8, FRONT + 2.8],
+  [41.7, -4.4, 41.7, -0.3, MID + 2.9, LOW + 2.9 + 0.3 * 5 / 4.4],
+  [35.55, -4.4, 35.55, -0.3, MID + 2.9, MAIN + 2.9 - 0.1 * 5 / 4.4],
 ];
 
 // ---------------------------------------------------------------- doors ----
@@ -361,6 +361,31 @@ export const FURNITURE = [
   { type: 'shelving', r: [0.3, 1.9, 2.0, 12.5], base: LOW },
   { type: 'workbench', r: [2.5, 12.5, 0.3, 2.3], base: LOW },
   { type: 'fridge', r: [15.6, 18.1, 11.3, 14.0], base: LOW, face: 's' },
+];
+
+// ------------------------------------------------------------- wall art ----
+// Generic pieces in the style of what hangs in the photos (drawn procedurally; no personal photos).
+// wall 'x': on a wall running along x with its face at z = c, facing dir (±1 on z); wall 'z': face at x = c.
+// a: centre along the wall, y: centre height, w × h in feet, frame: black | white | silver | none, mat: white mat.
+const art = (wall, c, dir, a, y, w, h, style, frame = 'black', mat = false) => ({ wall, c, dir, a, y, w, h, style, frame, mat });
+export const ART = [
+  art('z', 44.75, -1, 28.3, MAIN + 5.2, 4.2, 3.0, 'abstract', 'silver'),            // living room, over the couch (photo 1)
+  art('x', 34.75, -1, 30.1, MAIN + 5.3, 1.1, 1.4, 'flower', 'white', true),         // beside the bow window (photos 1, 2)
+  art('x', 11.9, 1, 25.5, MAIN + 5.0, 2.0, 2.6, 'bw', 'black', true),               // end of the hall (photos 5, 57)
+  art('x', 9.9, 1, 33.6, MAIN + 5.2, 1.1, 1.4, 'bw2', 'black', true),               // dining, beside the pass-through (photo 2)
+  art('z', 44.75, -1, 11.1, MAIN + 5.3, 1.0, 1.25, 'bw3', 'black', true),           // dining, left of the window (photo 6)
+  art('z', 44.75, -1, 12.45, MAIN + 5.3, 1.0, 1.25, 'bw4', 'black', true),
+  art('z', 44.75, -1, 18.9, MAIN + 5.2, 1.3, 1.6, 'bw5', 'black', true),            // dining, right of the window (photo 2)
+  art('z', 0.25, 1, 26.5, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
+  art('z', 0.25, 1, 24.8, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
+  art('z', 10.9, 1, 24.3, MAIN + 5.3, 1.1, 1.4, 'anchor', 'white', true),           // nursery, over the changing table (photos 34, 36)
+  art('z', 10.9, 1, 22.8, MAIN + 5.3, 1.1, 1.4, 'whale', 'white', true),
+  art('x', 27.65, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
+  art('z', 20.6, -1, 21.3, MAIN + 5.4, 2.2, 1.8, 'nautical', 'none'),               // nursery decal over the crib (no name)
+  art('z', 44.75, -1, 3.2, LOW + 5.7, 3.4, 2.4, 'seascape', 'silver'),              // playroom (photos 39, 40)
+  art('z', 44.75, -1, 15.6, LOW + 5.7, 1.4, 2.0, 'beach', 'silver'),                // playroom (photos 39, 44)
+  art('z', 18.5, 1, 2.2, LOW + 5.4, 1.6, 1.9, 'sailboats', 'white'),                // half bath, over the toilet (photos 45-48)
+  art('x', 14.7, 1, 26.8, LOW + 5.4, 3.0, 1.0, 'panorama', 'black'),                // lower hall (photo 50)
 ];
 
 // Start just inside the front door, on the entry landing, facing the stairs.

@@ -35,6 +35,7 @@ export function buildHouse() {
   fixtures(b, lamps);
   kitchen(b);
   furniture(b, mirrors, glass);
+  wallArt(b);
   exterior(b);
   switchPlates(b);
   const doors = L.DOORS.map(s => buildDoor(s));
@@ -419,7 +420,7 @@ function floorsAndCeilings(b, glass) {
   b.poly([[20.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 20], [20.8, L.LOW_CEIL, 20]], 'ceiling', { n: [0, -1, 0] });
   // exposed edges of the main floor at the stair openings
   b.poly([[20.8, L.LOW_CEIL - 0.05, 20], [24.8, L.LOW_CEIL - 0.05, 20], [24.8, L.MAIN, 20], [20.8, L.MAIN, 20]], 'paint:' + L.PAINT.tan, { n: [0, 0, 1] });
-  b.poly([[38.9, 7.95, 0], [42.2, 7.95, 0], [42.2, L.MAIN, 0], [38.9, L.MAIN, 0]], 'paint:' + L.PAINT.tan, { n: [0, 0, -1] });
+  b.poly([[38.9, L.LOW_CEIL, 0], [42.2, L.LOW_CEIL, 0], [42.2, L.MAIN, 0], [38.9, L.MAIN, 0]], 'paint:' + L.PAINT.tan, { n: [0, 0, -1] });
   for (const s of L.SOLIDS) {
     const [x0, x1, y0, y1, z0, z1] = s.b;
     b.box(x0, x1, y0, y1, z0, z1, 'paint:' + s.paint, { skip: ['ny'], collide: true, dens: s.ext ? 2 : undefined });
@@ -703,9 +704,12 @@ function railings(b) {
       Math.min(r.z0, r.z1) - 0.14, Math.max(r.z0, r.z1) + 0.14);
   }
   for (const [x0, z0, x1, z1, h0, h1] of L.HANDRAILS) {
-    beam(b, [x0, h0, z0], [x1, h1, z1], 0.17, 0, 'oak', { round: true });
+    beam(b, [x0, h0, z0], [x1, h1, z1], 0.24, 0.2, 'oak');
     const wallX = x0 < 24 ? 20.8 + 0.2 : x0 < 30 ? 28.8 - 0.2 : x0 < 38 ? 35 + 0.25 : 42.2 - 0.2;
-    for (const t of [0.12, 0.88]) {
+    // returns: each end turns and dies into the wall
+    const out = Math.sign(x0 - wallX);
+    for (const [z, h] of [[z0, h0], [z1, h1]]) beam(b, [wallX - out * 0.02, h, z], [x0 + out * 0.12, h, z], 0.24, 0.2, 'oak');
+    for (const t of [0.35, 0.65]) {
       const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t, y = h0 + (h1 - h0) * t;
       b.mbox(Math.min(wallX, x) - 0.02, Math.max(wallX, x) + 0.02, y - 0.25, y - 0.18, z - 0.03, z + 0.03, 'nickel');
     }
@@ -796,9 +800,7 @@ function kitchen(b) {
   // west run: corner base, range, pantry tower, fridge
   baseWest(N + depth - 0.1, 3.0, 1);
   range(b, W, 3.0, 5.5);
-  b.box(W, W + depth - 0.1, F, F + 7.6, 5.5, 6.72, CAB, { skip: ['ny', 'nx'], collide: true });
-  cabinetFronts(b, 'x+', W + depth - 0.1, 5.5, 6.72, F + 0.1, F + 4.4, 1, false);
-  cabinetFronts(b, 'x+', W + depth - 0.1, 5.5, 6.72, F + 4.5, F + 7.5, 1, false);
+  baseWest(5.5, 6.72, 1);                                   // base cabinet between the range and the fridge (photo 3)
   fridge(b, W, 6.75, 9.65, F);
   // north run: bases, sink under the window, dishwasher, rounded end cabinet at the stair
   baseNorth(W, 30.3, 2);
@@ -838,6 +840,9 @@ function kitchen(b) {
   upperN(33.75, 35.0, 1);
   upperW(N, 3.0, 1);
   upperW(3.0, 5.5, 2, F + 6.2);
+  upperW(5.5, 6.72, 1);
+  b.box(W, W + depth + 0.08, cTop - topT, cTop, 5.5, 6.72, TOP, { skip: ['nx'], dens: 7 });
+  b.box(W, W + 0.05, cTop, cTop + 0.3, 5.5, 6.72, TOP, { skip: ['nx', 'ny'], dens: 6 });
   microwave(b, W, 3.05, 5.45, F + 4.6);
   b.box(W, W + 2.4, F + 6.4, uy1, 6.72, 9.7, CAB, { skip: ['nx', 'ny'] });
 }
@@ -1409,6 +1414,35 @@ const FURN = {
     beam(b, [x1 - 0.25, F + 2.2, z1 + 0.1], [x1 - 0.25, F + 3.6, z1 + 0.1], 0.06, 0, 'enamelWhite', { round: true });
   },
 };
+
+// ============================================================== wall art ===
+// Framed prints (L.ART): a frame of four mouldings, an optional white mat and the picture, drawn
+// procedurally by the 'art:<style>' material. A frameless decal just sits on the wall.
+function wallArt(b) {
+  const FR = { black: 'paint:#1d1c1b', white: 'paintedWood', silver: 'paint:#c3c2bd' };
+  for (const p of L.ART) {
+    const alongX = p.wall === 'x', off = t => p.c + p.dir * t;
+    const ry = alongX ? (p.dir > 0 ? 0 : Math.PI) : (p.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    const at = t => (alongX ? [p.a, p.y, off(t)] : [off(t), p.y, p.a]);
+    const box = (a0, a1, y0, y1, t0, t1, mat) => {
+      const [o0, o1] = [off(t0), off(t1)].sort((m, n) => m - n);
+      if (alongX) b.mbox(p.a + a0, p.a + a1, p.y + y0, p.y + y1, o0, o1, mat);
+      else b.mbox(o0, o1, p.y + y0, p.y + y1, p.a + a0, p.a + a1, mat);
+    };
+    const hw = p.w / 2, hh = p.h / 2;
+    if (p.frame === 'none') { b.prim(new THREE.PlaneGeometry(p.w, p.h), 'art:' + p.style, ...at(0.01), ry); continue; }
+    const fw = p.w > 2.5 ? 0.16 : 0.1, D = 0.1, fm = FR[p.frame];
+    box(-hw, hw, hh - fw, hh, 0, D, fm); box(-hw, hw, -hh, -hh + fw, 0, D, fm);
+    box(-hw, -hw + fw, -hh + fw, hh - fw, 0, D, fm); box(hw - fw, hw, -hh + fw, hh - fw, 0, D, fm);
+    let iw = p.w - 2 * fw, ih = p.h - 2 * fw;
+    if (p.mat) {
+      b.prim(new THREE.PlaneGeometry(iw, ih), 'paint:#f4f2ec', ...at(D - 0.03), ry);
+      const m = Math.min(iw, ih) * 0.14;
+      iw -= 2 * m; ih -= 2 * m;
+    }
+    b.prim(new THREE.PlaneGeometry(iw, ih), 'art:' + p.style, ...at(D - 0.025), ry);
+  }
+}
 
 // table lamp: turned ceramic base, brass stem and a drum shade
 function tableLamp(b, x, y, z) {
