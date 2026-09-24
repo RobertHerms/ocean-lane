@@ -21,6 +21,7 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 // ------------------------------------------------------------ constants ----
 const EYE = 5.35, R = 0.75, STEP = 1.05;
 const WALK = 5.0, TURN = 1.8, LOOK = 1.25;
+const DRAG_LOOK = 0.0042, TOUCH_LOOK = 0.0075;   // radians per pixel dragged (mouse / finger)
 const BODY_LO = 1.0, BODY_HI = 5.9;
 
 const loadingEl = document.getElementById('loading');
@@ -235,6 +236,12 @@ class Door {
     this.cz = s.axis === 'x' ? s.c : (s.a0 + s.a1) / 2;
     const room = roomKey(this.cx + (s.axis === 'z' ? s.swing * 0.8 : 0), this.cz + (s.axis === 'x' ? s.swing * 0.8 : 0), s.base + 3);
     this.pivot = buildDynamic(d, room);
+    if (s.slide) {
+      // bypass closet panel: stays parallel to the wall and runs along its own track
+      this.ax = s.axis === 'x' ? [1, 0] : [0, 1];
+      this.hx0 = this.hx + (s.axis === 'z' ? s.slide.track : 0);
+      this.hz0 = this.hz + (s.axis === 'x' ? s.slide.track : 0);
+    }
     this.pivot.position.set(this.hx, s.base, this.hz);
     this.pivot.traverse(o => { o.userData.door = this; });
     scene.add(this.pivot);
@@ -245,6 +252,14 @@ class Door {
     const sp = 1.6 * dt;
     this.t = this.target > this.t ? Math.min(this.target, this.t + sp) : Math.max(this.target, this.t - sp);
     const e = this.t * this.t * (3 - 2 * this.t);
+    if (this.slide) {
+      const off = e * this.slide.dist;
+      this.hx = this.hx0 + this.ax[0] * off; this.hz = this.hz0 + this.ax[1] * off;
+      this.pivot.position.set(this.hx, this.base, this.hz);
+      this.pivot.rotation.y = this.thC;
+      this.dx = Math.cos(this.thC); this.dz = -Math.sin(this.thC);
+      return;
+    }
     const a = this.thC + this.dlt * e;
     this.pivot.rotation.y = a;
     this.dx = Math.cos(a); this.dz = -Math.sin(a);
@@ -280,6 +295,44 @@ class GarageDoor {
   get isOpen() { return this.target > 0.5; }
 }
 const garageDoors = house.garageDoors.map(d => new GarageDoor(d));
+
+// Sliding patio door: one press rolls the shade up, then slides the left-hand panel open
+// (and the reverse to close). The blocked part of the opening follows the panel.
+class Slider {
+  constructor(s) {
+    Object.assign(this, s.spec);
+    this.isSlider = true;
+    const room = roomKey(this.cx, this.cz + 1, this.base + 3);
+    this.panel = buildDynamic(s.panel, room);
+    this.shade = buildDynamic(s.shade, room);
+    const pos = [], nrm = [];
+    for (const k of [0, 1, 2, 0, 2, 3]) { pos.push(...s.glass[k]); nrm.push(...s.n); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    const pane = new THREE.Mesh(geo, glassMat);
+    pane.renderOrder = 2;
+    this.panel.add(pane);
+    for (const g of [this.panel, this.shade]) { g.traverse(o => { o.userData.door = this; }); scene.add(g); }
+    this.box = { x0: this.a0, x1: this.a1, y0: this.base, y1: this.base + 7, z0: this.c - 0.3, z1: this.c + 0.3 };
+    this.t = 0; this.target = 0;
+    this.update(0);
+  }
+  update(dt) {
+    const sp = 0.55 * dt;
+    this.t = this.target > this.t ? Math.min(this.target, this.t + sp) : Math.max(this.target, this.t - sp);
+    const ease = v => v * v * (3 - 2 * v);
+    const c01 = v => Math.min(1, Math.max(0, v));
+    const up = ease(c01(this.t / 0.45)), slide = ease(c01((this.t - 0.55) / 0.45));
+    const k = 1 - 0.94 * up;                                   // shade rolls up into the headrail
+    this.shade.scale.y = k;
+    this.shade.position.y = this.top * (1 - k);
+    this.panel.position.x = slide * this.slide;
+    this.box.x0 = this.a0 + slide * this.slide;               // the open part of the doorway is passable
+  }
+  get isOpen() { return this.target > 0.5; }
+}
+const sliders = (house.sliders || []).map(s => new Slider(s));
 
 // ------------------------------------------------------ reflection probes ----
 const envs = new Map();
@@ -321,6 +374,7 @@ if (bake) {
 // --------------------------------------------------------------- player ----
 const player = { x: L.START.x, z: L.START.z, feet: L.START.feet, vy: 0, yaw: L.START.yaw, pitch: 0.02, camY: L.START.feet + EYE };
 const boxes = house.b.boxes;
+for (const s of sliders) boxes.push(s.box);
 const kidBodies = [];   // filled once the children are created
 
 function floorAt(x, z, feet) {
@@ -403,17 +457,88 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
 window.addEventListener('blur', () => keys.clear());
-let dragging = false;
-canvas.addEventListener('pointerdown', e => { dragging = true; canvas.setPointerCapture(e.pointerId); });
-canvas.addEventListener('pointerup', () => { dragging = false; });
-canvas.addEventListener('pointermove', e => {
-  if (!dragging) return;
-  player.yaw -= e.movementX * 0.0042;
-  player.pitch = clamp(player.pitch - e.movementY * 0.0042, -1.35, 1.35);
+// drag the view to look around (mouse or finger); a quick tap on a door opens or closes it
+let dragging = null;
+const lookBy = (dx, dy, k) => { player.yaw -= dx * k; player.pitch = clamp(player.pitch - dy * k, -1.35, 1.35); };
+canvas.addEventListener('pointerdown', e => {
+  dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() };
+  canvas.setPointerCapture(e.pointerId);
 });
+canvas.addEventListener('pointermove', e => {
+  if (!dragging || e.pointerId !== dragging.id) return;
+  lookBy(e.clientX - dragging.x, e.clientY - dragging.y, e.pointerType === 'touch' ? TOUCH_LOOK : DRAG_LOOK);
+  dragging.x = e.clientX; dragging.y = e.clientY;
+});
+const endDrag = e => {
+  if (!dragging || e.pointerId !== dragging.id) return;
+  const tap = e.type === 'pointerup' && e.pointerType === 'touch' && Math.hypot(e.clientX - dragging.x0, e.clientY - dragging.y0) < 10
+    && performance.now() - dragging.t0 < 350;
+  dragging = null;
+  if (tap && started) { const t = doorAtScreen(e.clientX, e.clientY); if (t) toggleDoor(t); }
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+// Touch: two thumb sticks. The left one walks (forward / back, sidestep: like W S A D), the right one
+// looks around the same way dragging the view does. They appear once the screen is touched.
+const stick = { x: 0, y: 0 };
+let touchOn = false;
+function enableTouch() {
+  if (touchOn) return;
+  touchOn = true;
+  document.body.classList.add('touch');
+}
+if (matchMedia('(pointer: coarse)').matches) enableTouch();
+window.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') enableTouch(); }, true);
+function thumbStick(el, onMove, onEnd) {
+  if (!el) return;
+  const knob = el.querySelector('.knob');
+  let id = null, cx = 0, cy = 0, lx = 0, ly = 0;
+  const move = e => {
+    const reach = el.clientWidth * 0.31;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > reach) { dx *= reach / d; dy *= reach / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    onMove(dx / reach, dy / reach, e.clientX - lx, e.clientY - ly);
+    lx = e.clientX; ly = e.clientY;
+  };
+  el.addEventListener('pointerdown', e => {
+    if (id !== null) return;
+    e.preventDefault();
+    id = e.pointerId;
+    el.setPointerCapture(id);
+    const r = el.getBoundingClientRect();
+    cx = r.left + r.width / 2; cy = r.top + r.height / 2; lx = e.clientX; ly = e.clientY;
+    el.classList.add('active');
+    move(e);
+  });
+  el.addEventListener('pointermove', e => { if (e.pointerId === id) move(e); });
+  const end = e => {
+    if (e.pointerId !== id) return;
+    id = null;
+    knob.style.transform = '';
+    el.classList.remove('active');
+    onEnd();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+thumbStick(document.getElementById('stickWalk'), (x, y) => {
+  const m = Math.hypot(x, y), k = m < 0.15 ? 0 : (m - 0.15) / 0.85 / m;   // small dead zone in the middle
+  stick.x = x * k; stick.y = y * k;
+}, () => { stick.x = stick.y = 0; });
+thumbStick(document.getElementById('stickLook'), (x, y, dx, dy) => lookBy(dx, dy, TOUCH_LOOK), () => {});
+hintEl.addEventListener('click', () => { if (!started) return; const t = findDoorTarget(); if (t) toggleDoor(t); });
 
 function toggleDoor(t) {
-  if (t.isGarage) { t.target = t.isOpen ? 0 : 1; return; }
+  if (t.isGarage || t.isSlider) { t.target = t.isOpen ? 0 : 1; return; }
+  if (t.slide) {
+    // bypass closet: slide this panel open (the other one closes first) or shut
+    const open = !t.isOpen;
+    for (const d of doorGroups.get(t.group)) d.target = open && d === t ? 1 : 0;
+    return;
+  }
   const open = !t.isOpen;
   for (const d of doorGroups.get(t.group)) d.target = open ? 1 : 0;
 }
@@ -421,13 +546,21 @@ function toggleDoor(t) {
 // ------------------------------------------------------------ targeting ----
 const ray = new THREE.Raycaster();
 ray.firstHitOnly = true;
-const allDoorLike = [...doors, ...garageDoors];
+const allDoorLike = [...doors, ...garageDoors, ...sliders];
 function lineOfSight(x, y, z, tx, ty, tz) {
   const d = new THREE.Vector3(tx - x, ty - y, tz - z);
   const dist = d.length();
   ray.set(new THREE.Vector3(x, y, z), d.normalize());
   ray.far = dist - 0.4;
   return ray.intersectObjects(staticMeshes, false).length === 0;
+}
+// the door-like thing under a point on the screen (a tap), else whatever door the view is aimed at
+function doorAtScreen(sx, sy) {
+  ray.setFromCamera({ x: sx / window.innerWidth * 2 - 1, y: -(sy / window.innerHeight) * 2 + 1 }, camera);
+  ray.far = 7;
+  const hits = ray.intersectObjects([...doorMeshes, ...staticMeshes], false);
+  if (hits.length && hits[0].object.userData.door) return hits[0].object.userData.door;
+  return null;
 }
 function findDoorTarget() {
   ray.setFromCamera({ x: 0, y: 0 }, camera);
@@ -453,7 +586,7 @@ function updateHint(now) {
   if (now - lastHint < 150) return;
   lastHint = now;
   const t = findDoorTarget();
-  hintEl.innerHTML = t ? `<b>Space</b> ${t.isOpen ? 'close' : 'open'} ${t.name.toLowerCase()}` : '';
+  hintEl.innerHTML = t ? `<b>${touchOn ? 'Tap' : 'Space'}</b> ${t.isOpen ? 'close' : 'open'} ${t.name.toLowerCase()}` : '';
   hintEl.style.opacity = t ? 1 : 0;
 }
 
@@ -542,6 +675,8 @@ function levelName(f) {
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  // a page opened in a background tab starts at 0x0: catch up once it has a size
+  if (canvas.width !== Math.floor(window.innerWidth * renderer.getPixelRatio())) onResize();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (started) {
@@ -557,12 +692,13 @@ function frame(now) {
     if (keys.has('e')) turn -= 1;
     if (keys.has('PageUp') || keys.has('r')) look += 1;
     if (keys.has('PageDown') || keys.has('f')) look -= 1;
+    mf -= stick.y; ms += stick.x;
     player.yaw += turn * TURN * dt;
     player.pitch = clamp(player.pitch + look * LOOK * dt, -1.35, 1.35);
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     let vx = fx * mf - fz * ms, vz = fz * mf + fx * ms;
     const vl = Math.hypot(vx, vz);
-    if (vl > 0) { vx /= vl; vz /= vl; }
+    if (vl > 1) { vx /= vl; vz /= vl; }                 // keys: full speed; thumb stick: proportional
     const speed = WALK * (mf < 0 && !ms ? 0.7 : 1);
     for (let i = 0; i < 3; i++) [player.x, player.z] = resolve(player.x + vx * speed * dt / 3, player.z + vz * speed * dt / 3, player.feet);
   }
@@ -576,6 +712,7 @@ function frame(now) {
   [player.x, player.z] = resolve(player.x, player.z, player.feet);
   for (const d of doors) if (d.t !== d.target) d.update(dt);
   for (const g of garageDoors) if (g.t !== g.target) g.update(dt);
+  for (const s of sliders) if (s.t !== s.target) s.update(dt);
   if (kids) kids.update(dt, player, now);
 
   player.camY += (player.feet + (player.eyeH ?? EYE) - player.camY) * Math.min(1, dt * 12);   // eyeH: test override
@@ -604,18 +741,21 @@ function begin() {
   if (started) return;
   started = true;
   startEl.classList.add('hidden');
+  document.body.classList.add('walking');
   canvas.focus();
 }
 document.getElementById('go').addEventListener('click', begin);
 setLoading('Ready.');
 document.getElementById('go').disabled = false;
 
-window.addEventListener('resize', () => {
+function onResize() {
+  if (!window.innerWidth || !window.innerHeight) return;
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+window.addEventListener('resize', onResize);
 // Debug/test hook: jump to a pose, settle exposure synchronously and render once.
 function snap(x, z, feet, yaw, pitch = 0) {
   Object.assign(player, { x, z, feet, yaw, pitch, camY: feet + EYE, vy: 0 });
@@ -637,5 +777,5 @@ function snap(x, z, feet, yaw, pitch = 0) {
   composer.render();
   return exposure;
 }
-window.__house = { player, doors, garageDoors, camera, keys, renderer, scene, begin, snap, kids };
+window.__house = { player, doors, garageDoors, sliders, camera, keys, renderer, scene, begin, snap, kids };
 requestAnimationFrame(frame);

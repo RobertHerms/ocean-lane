@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
   <meta name="robots" content="noindex, nofollow">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ocean Lane Walkthrough</title>
 <style>
   :root { --panel: rgba(20, 18, 16, 0.66); --ink: #f4efe6; --muted: #bdb3a4; --accent: #f0b35a; }
@@ -38,6 +38,22 @@
   #go:disabled { opacity: .45; cursor: wait; }
   #loading { margin-left: 12px; color: var(--muted); font-size: 12.5px; }
   @media (max-width: 700px) { #map { width: 150px; height: 179px; } #help { display: none; } }
+  /* touch: two thumb sticks (walk on the left, look on the right) */
+  #view, .stick { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .stick { position: fixed; bottom: calc(22px + env(safe-area-inset-bottom)); width: 138px; height: 138px; border-radius: 50%;
+    background: rgba(20, 18, 16, .34); border: 2px solid rgba(244, 239, 230, .38); backdrop-filter: blur(3px); display: none; }
+  #stickWalk { left: calc(20px + env(safe-area-inset-left)); }
+  #stickLook { right: calc(20px + env(safe-area-inset-right)); }
+  .stick .knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
+    display: grid; place-items: center; background: rgba(244, 239, 230, .85); color: #2b241c; box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+    transition: transform .12s ease-out; }
+  .stick.active .knob { transition: none; background: rgba(255, 250, 240, .95); }
+  .stick .knob svg { width: 34px; height: 34px; }
+  body.touch.walking .stick { display: block; }
+  body.touch #help { display: none; }
+  body.touch #hint { bottom: calc(176px + env(safe-area-inset-bottom)); cursor: pointer; }
+  .touch-only { display: none; }
+  body.touch .touch-only { display: table-row; }
 </style>
 <script type="importmap">
   { "imports": {
@@ -54,6 +70,8 @@
 <div id="loc" class="panel"><span>Front walk</span><small>Outside</small></div>
 <canvas id="map"></canvas>
 <div id="hint" class="panel"></div>
+<div id="stickWalk" class="stick" aria-label="Walk"><div class="knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.2 2h9.6l-.5 9.6-.9 8.2h-2.5l-.6-8.6h-.6l-.6 8.6H8.6l-.9-8.2z"/><path fill="currentColor" d="M8.5 19.2h3l.2 2.6H6.4c0-1.4.9-2.6 2.1-2.6zM12.5 19.2h3c1.2 0 2.1 1.2 2.1 2.6h-5.3z"/></svg></div></div>
+<div id="stickLook" class="stick" aria-label="Look around"><div class="knob"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.8 12c1.4-2.9 3.2-4.3 5.2-4.3s3.8 1.4 5.2 4.3c-1.4 2.9-3.2 4.3-5.2 4.3S3.2 14.9 1.8 12z"/><path d="M11.8 12c1.4-2.9 3.2-4.3 5.2-4.3s3.8 1.4 5.2 4.3c-1.4 2.9-3.2 4.3-5.2 4.3s-3.8-1.4-5.2-4.3z"/></g><circle cx="7.3" cy="12.2" r="2.1" fill="currentColor"/><circle cx="17.3" cy="12.2" r="2.1" fill="currentColor"/></svg></div></div>
 <div id="warn" class="panel hidden">Lighting hasn't been baked for this layout yet — open bake.html first.</div>
 <div id="help" class="panel">
   <div><b>↑ / ↓</b> walk forward / back</div>
@@ -74,6 +92,7 @@
       <tr><td>PgUp / PgDn</td><td>Look up / down (also R / F or drag the mouse)</td></tr>
       <tr><td>Space</td><td>Open / close a door or garage door</td></tr>
       <tr><td>M · H · C</td><td>Map · help · level your view</td></tr>
+      <tr class="touch-only"><td>Touch</td><td>Left stick walks, right stick looks around; tap a door (or the prompt) to open it</td></tr>
     </table>
     <button id="go" disabled>Start walking</button><span id="loading">Loading…</span>
   </div>

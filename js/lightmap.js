@@ -95,7 +95,11 @@ export function collectProbes(house) {
   };
   for (const d of house.doors) addLocal(d, doorMatrix(d.spec, 0));
   for (const g of house.garageDoors) addLocal(g, { apply: (v, w) => (w ? [v[0] + g.spec.x0, v[1], v[2] + g.spec.z] : v) });
-  const ranges = [...meshes, ...house.doors.flatMap(d => d.parts), ...house.garageDoors.flatMap(g => g.parts)]
+  // sliding doors: panel and shade are built in place (closed)
+  const same = { apply: v => v };
+  for (const s of house.sliders || []) { addLocal(s.panel, same); addLocal(s.shade, same); }
+  const ranges = [...meshes, ...house.doors.flatMap(d => d.parts), ...house.garageDoors.flatMap(g => g.parts),
+    ...(house.sliders || []).flatMap(s => [...s.panel.parts, ...s.shade.parts])]
     .filter(m => m.kind === 'mesh').map(m => [m.probeBase, m.pos.length / 3]);
   return { pos: new Float32Array(pos), nrm: new Float32Array(nrm), count: pos.length / 3, ranges };
 }
@@ -114,11 +118,12 @@ export function doorFrame(s) {
 }
 export function doorMatrix(s, t) {
   const f = doorFrame(s);
-  const a = f.thC + f.dlt * t, c = Math.cos(a), sn = Math.sin(a);
+  const a = s.slide ? f.thC : f.thC + f.dlt * t, c = Math.cos(a), sn = Math.sin(a);
+  const tr = s.slide ? s.slide.track : 0, ox = s.axis === 'z' ? tr : 0, oz = s.axis === 'x' ? tr : 0;
   return {
     apply(v, w) {
       const x = v[0] * c + v[2] * sn, z = -v[0] * sn + v[2] * c;
-      return w ? [x + f.hx, v[1] + s.base, z + f.hz] : [x, v[1], z];
+      return w ? [x + f.hx + ox, v[1] + s.base, z + f.hz + oz] : [x, v[1], z];
     },
   };
 }

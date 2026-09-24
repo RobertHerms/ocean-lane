@@ -32,7 +32,7 @@ const DEFS = {
   cabinet: { color: '#ece5d4', roughness: 0.45 },
   counter: { color: '#ebe5d8', roughness: 0.25 },
   cultured: { color: '#ece3cf', roughness: 0.18 },
-  oak: { color: '#6a3a1e', roughness: 0.35 },
+  oak: { map: 'stair_tread.jpg', roughness: 0.35 },          // handrails: same stained oak as the treads (photo 51)
   porcelain: { color: '#f7f7f5', roughness: 0.1 },
   enamelWhite: { color: '#f1f1ef', roughness: 0.3 },
   stainless: { color: '#c9cbcd', roughness: 0.3, metalness: 1 },
@@ -60,6 +60,7 @@ const DEFS = {
   amberGlass: { color: '#e9c48a', emissive: '#ffcf8a', emissiveIntensity: 2.0, glow: true, side: 'double' },
   shade: { color: '#efe4cf', emissive: '#ffe4b8', emissiveIntensity: 0.7, glow: true, side: 'double' },
   frosted: { color: '#e9eef0', emissive: '#f2f6f8', emissiveIntensity: 0.9, glow: true },
+  tvRachel: { color: '#000000', roughness: 0.12, emissive: '#ffffff', emissiveIntensity: 1.1, glow: true, procedural: 'msRachel' },   // playroom TV, switched on
 };
 
 function parse(key) {
@@ -117,6 +118,44 @@ function proceduralTexture(kind) {
     }
     g.globalAlpha = 0.05;
     for (let i = 0; i < 4000; i++) { g.fillStyle = rnd() < 0.5 ? '#fff' : '#9a917f'; g.fillRect(rnd() * 512, rnd() * 512, 8 + rnd() * 30, 1); }
+  } else if (kind === 'msRachel') {
+    // title card for the playroom TV: the show's name in big rounded letters on a sunny backdrop
+    c.width = 1024; c.height = 564;
+    const W = c.width, H = c.height;
+    const bg = g.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#fff3a8'); bg.addColorStop(0.55, '#ffd7e6'); bg.addColorStop(1, '#c9e9ff');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const dots = ['#ff7eb6', '#ffb347', '#6fd3c7', '#9b8cff', '#6fb6ff'];
+    for (let i = 0; i < 70; i++) {
+      g.globalAlpha = 0.35; g.fillStyle = dots[i % dots.length];
+      g.beginPath(); g.arc(rnd() * W, rnd() * H, 6 + rnd() * 16, 0, Math.PI * 2); g.fill();
+    }
+    g.globalAlpha = 1;
+    const word = 'Ms Rachel', cols = ['#ff4f9a', '#ff9f1c', null, '#1fb5a7', '#7a5cff', '#2f86ff', '#ff4f9a', '#ff9f1c', '#1fb5a7'];
+    g.font = '800 196px "Arial Rounded MT Bold", "Comic Sans MS", "Trebuchet MS", sans-serif';
+    g.textBaseline = 'middle'; g.lineJoin = 'round';
+    const widths = [...word].map(ch => g.measureText(ch).width), total = widths.reduce((a, v) => a + v, 0);
+    let x = (W - total) / 2;
+    [...word].forEach((ch, i) => {
+      const y = H * 0.47 + (i % 2 ? -8 : 8);
+      if (cols[i]) {
+        g.save(); g.shadowColor = 'rgba(80,40,90,0.35)'; g.shadowBlur = 18; g.shadowOffsetY = 8;
+        g.strokeStyle = '#ffffff'; g.lineWidth = 26; g.strokeText(ch, x, y); g.restore();
+        g.fillStyle = cols[i]; g.fillText(ch, x, y);
+      }
+      x += widths[i];
+    });
+    // a small heart under the name
+    const hx = W / 2, hy = H * 0.8, r = 26;
+    g.fillStyle = '#ff4f9a'; g.strokeStyle = '#ffffff'; g.lineWidth = 10;
+    g.beginPath(); g.moveTo(hx, hy + r * 1.1);
+    g.bezierCurveTo(hx - r * 2.2, hy - r * 0.2, hx - r * 1.1, hy - r * 1.9, hx, hy - r * 0.7);
+    g.bezierCurveTo(hx + r * 1.1, hy - r * 1.9, hx + r * 2.2, hy - r * 0.2, hx, hy + r * 1.1);
+    g.stroke(); g.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
+    cache.set(kind, t);
+    return t;
   } else if (kind === 'shingles') {
     // architectural asphalt shingles, 5" exposure
     g.fillStyle = '#39383a'; g.fillRect(0, 0, 512, 512);
@@ -199,7 +238,10 @@ export function makeMaterial(key, variant, lightMap) {
     if (rep !== 1) tt.repeat.set(rep, rep);
     m[slot] = tt;
   }
-  if (d.procedural) { const t = proceduralTexture(d.procedural).clone(); t.repeat.set(rep, rep); m.map = t; }
+  if (d.procedural) {
+    const t = proceduralTexture(d.procedural).clone(); t.repeat.set(rep, rep); m.map = t;
+    if (d.emissive) m.emissiveMap = t;          // a lit screen shows its own picture
+  }
   if (d.normalScale) m.normalScale.set(d.normalScale, d.normalScale);
   if (d.emissive) { m.emissive.set(d.emissive); m.emissiveIntensity = d.emissiveIntensity ?? 1; }
   if (d.glow) { m.toneMapped = true; }

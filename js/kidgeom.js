@@ -250,17 +250,21 @@ function surfaceZ(f, x, y) {
 
 const HAIR = {
   Girl(x, y, z) {
-    let d = ell(x, y, z, [0, 3.295, -0.03, 0.262, 0.335, 0.298]);
-    const ex = x / 0.29, ez = (z + 0.075) / 0.245;
-    let cur = (Math.sqrt(ex * ex + ez * ez) - 1) * 0.245;
-    cur = Math.max(cur, Math.abs(y - 2.88) - 0.4);
-    d = smin(d, cur, 0.1);
-    for (const s of [-1, 1]) d = smin(d, rcone(x, y, z, [s * 0.205, 3.12, 0.04], [s * 0.265, 2.55, 0.0], 0.055, 0.065), 0.06);   // locks resting on the shoulders
+    // full, wavy shoulder-length hair (photo): a low rounded crown that widens quickly, most of the
+    // volume beside the ears and cheeks, falling in soft waves onto the shoulders
+    let d = ell(x, y, z, [0, 3.29, -0.045, 0.34, 0.335, 0.325]);
+    const flare = clamp((3.3 - y) / 0.5, 0, 1);
+    const rx = 0.33 + 0.035 * flare, rz = 0.27 + 0.02 * flare;
+    const ex = x / rx, ez = (z + 0.07) / rz;
+    let cur = (Math.sqrt(ex * ex + ez * ez) - 1) * rz;
+    cur = Math.max(cur, Math.abs(y - 2.98) - 0.3);
+    d = smin(d, cur, 0.12);
+    for (const s of [-1, 1]) d = smin(d, rcone(x, y, z, [s * 0.25, 3.1, 0.05], [s * 0.3, 2.6, 0.02], 0.055, 0.065), 0.06);   // locks resting on the shoulders
     const a = Math.atan2(x, z + 0.05);
-    const lower = clamp((3.05 - y) / 0.5, 0, 1);
-    d += 0.007 * Math.sin(a * 6 + y * 7) * lower + 0.024 * (vnoise(x * 7, y * 3, z * 7) - 0.5)
-      + 0.05 * (vnoise(x * 13, 0.3, z * 13) - 0.5) * clamp((2.78 - y) / 0.25, 0, 1);
-    d = smax(d, -ell(x, y, z, [0, 3.115, 0.215, 0.168, 0.262, 0.2]), 0.035);
+    const lower = clamp((3.2 - y) / 0.45, 0, 1);
+    d += 0.012 * Math.sin(a * 9 + y * 11) * lower + 0.02 * (vnoise(x * 7, y * 3, z * 7) - 0.5)
+      + 0.05 * (vnoise(x * 13, 0.3, z * 13) - 0.5) * clamp((2.84 - y) / 0.2, 0, 1);
+    d = smax(d, -ell(x, y, z, [0, 3.14, 0.23, 0.19, 0.31, 0.2]), 0.035);   // the face
     // nothing in front of the throat: below the chin the hair stays behind the neck, beside it the locks may come forward
     const below = clamp((2.99 - y) / 0.08, 0, 1), beside = clamp((Math.abs(x) - 0.15) / 0.06, 0, 1);
     const zmax = 0.07 - below * (1 - beside) * 0.12 + beside * 0.08;
@@ -360,7 +364,9 @@ export function buildKidGeometry(name) {
   }
   const J = joints(S);
   const { si, sw } = skinWeights(S, J, body.pos, lab);
-  const hair = polygonize(HAIR[S.name], [-0.42, S.name === 'Girl' ? 2.3 : S.chin + 0.02, -0.42], [0.42, S.H + 0.12, 0.36], 0.0125);
+  const hair = S.name === 'Girl'
+    ? polygonize(HAIR.Girl, [-0.5, 2.3, -0.5], [0.5, S.H + 0.12, 0.42], 0.0125)
+    : polygonize(HAIR.Boy, [-0.42, S.chin + 0.02, -0.42], [0.42, S.H + 0.12, 0.36], 0.0125);
   return {
     name, J, eyes,
     body: { pos: body.pos, nrm: body.nrm, index: Uint32Array.from(body.index), lab, si, sw },

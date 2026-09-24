@@ -473,6 +473,7 @@ class NavGrid {
         const x = this.nx[n], z = this.nz[n];
         const along = d.axis === 'x' ? x : z, across = d.axis === 'x' ? z - d.c : x - d.c;
         if (along > d.a0 - 0.1 && along < d.a1 + 0.1 && Math.abs(across) < 0.25 + this.R) tag(n, d, 'shut');
+        if (d.slide) continue;
         const u = clamp((x - d.hx) * ox + (z - d.hz) * oz, 0, d.w);
         if (Math.hypot(x - d.hx - ox * u, z - d.hz - oz * u) < this.R + 0.12) tag(n, d, 'open');
       }
