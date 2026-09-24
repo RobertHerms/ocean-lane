@@ -104,22 +104,24 @@ export const WALLS = [
   wx(0, 0, 35, ALL, [loWin(21.7, 23.3), loWin(30.5, 33.5),
     hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7), hiWin(30.6, 33.4, 3.6, 7)], EXT),
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
-  wx(GARAGE_Z, 0, 20.8, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
+  wx(GARAGE_Z, 0, 20.75, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
     hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
   wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T }),      // same thickness as the foyer wall it continues
-  wx(30, 20.8, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
+  wx(30, 20.85, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
     win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], EXT),
   wz(28.8, 30, 35, ALL, [], EXT),
   wx(35, 28.8, 45, LO, [loWin(31.8, 34.7), loWin(34.7, 38.9), loWin(38.9, 41.6)], EXT),
   wx(35, 28.8, 31.2, HI, [], EXT), wx(35, 43.5, 45, HI, [], EXT),
   // bow window across the living room (BOW, built in house.js); a header drops to its low ceiling
-  wx(35, BOW.x0, BOW.x1, HI, [open(BOW.x0, BOW.x1, MAIN - 0.1, BOW.ceil)]),
+  wx(35, BOW.x0, BOW.x1, HI, [open(BOW.x0, BOW.x1, MAIN - 0.1, BOW.ceil)], { t: EXT_T }),
   wz(45, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),                  // annex: top follows the lean-to roof
-  wz(45, 0, 35, ALL, [loWin(6, 10), hiWin(1.2, 8.5, 2.6, 7, { panes: [1, 2.2, 1] }), hiWin(13.5, 17.6)], EXT),
+  wz(45, 0, 35, ALL, [loWin(10.3, 14.3), hiWin(1.2, 8.5, 2.6, 7, { panes: [1, 2.2, 1] }), hiWin(13.5, 17.6)], EXT),   // playroom window opposite the hall entrance
   wz(35, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),
   wx(-8, 35, 45, [0, annexCeil(-8)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),
   // ---- rear stair annex ----
-  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header)
+  // under the rear up-flight the wall only blocks below the stair (colTop), so the top steps stay walkable
+  wx(0, 35, 38.9, LO, [door(35.4, 37.9, LOW)], { t: EXT_T, colTop: MAIN - 1.3 }),
+  wx(0, 38.9, 45, LO, [open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header)
   wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)], { t: EXT_T }),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
   wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3)]),
@@ -156,15 +158,15 @@ export const WALLS = [
   wz(18.3, 0, 14.6, LO),
   wx(4.5, 18.3, 25.2, LO),
   wx(14.5, 18.3, 25.2, LO, [door(21.7, 24.2, LOW)]),
-  wz(20.8, 14.5, GARAGE_Z, LO, [door(14.7, 17.5, LOW)]),
+  wz(20.8, 14.5, 20, LO, [door(14.7, 17.5, LOW)]),          // the stairwell wall carries on from z 20
   wz(25.2, 0, 14.5, LO, [door(2.45, 4.35, LOW)]),
-  wx(2.3, 25.2, 28.8, LO, [door(26.1, 28.1, LOW)]),
-  wz(28.8, 0, 2.3, LO),
-  wx(HB_HALL, 25.2, 28.8, LO),
+  wx(2.3, 25.2, 28.85, LO, [door(26.1, 28.1, LOW)]),
+  wz(28.8, 0, 2.3, LO, [], { t: EXT_T }),
+  wx(HB_HALL, 25.2, 28.85, LO),
   // playroom west wall: headers over the openings to the half-bath hall and to the front-stair hall
-  wz(28.8, 2.3, 19.5, LO, [open(2.3, HB_HALL, LOW, LOW + 7.2), door(7.4, 12.4, LOW), open(14.5, 19.5, LOW, LOW + 7.75)]),
-  wx(14.5, 25.2, 28.8, LO),
-  wx(19.5, 24.8, 28.8, LO, [door(25.5, 28.1, LOW)]),
+  wz(28.8, 2.3, 19.5, LO, [open(2.3, HB_HALL, LOW, LOW + 7.2), door(7.4, 12.4, LOW), open(14.5, 19.5, LOW, LOW + 7.75)], { t: EXT_T }),   // playroom west face in line with the stair wall
+  wx(14.5, 25.2, 28.85, LO),
+  wx(19.5, 24.8, 28.85, LO, [door(25.5, 28.1, LOW)]),
 ];
 
 // Solid half-walls beside stair flights (top follows the higher flight), with a balustrade on top.
@@ -226,7 +228,7 @@ export const DOORS = [
   d('rcl', 'Closet', 'x', 0, 35.4, 37.9, 0, 1, LOW),
   d('hb', 'Half bath', 'z', 25.2, 2.45, 4.35, 1, -1, LOW),
   d('laun', 'Laundry', 'x', 14.5, 21.7, 24.2, 1, -1, LOW),
-  d('garI', 'Garage', 'z', 20.8, 14.7, 17.5, 1, -1, LOW),
+  d('garI', 'Garage', 'z', 20.8, 14.7, 17.5, 0, -1, LOW),        // hinged at the laundry end
   d('clN', 'Closet', 'x', 2.3, 26.1, 28.1, 0, 1, LOW),
   d('util1', 'Utility closet', 'z', 28.8, 7.4, 9.9, 0, 1, LOW, 'panel', 'util'),
   d('util2', 'Utility closet', 'z', 28.8, 9.9, 12.4, 1, 1, LOW, 'panel', 'util'),
@@ -283,15 +285,17 @@ const can = (x, z, y) => ({ kind: 'can', x, z, y });
 export const FIXTURES = [
   // playroom recessed lights: two rows of six down the long room; lower halls
   ...[32.85, 40.95].flatMap(x => [2.9, 8.75, 14.6, 20.4, 26.25, 32.1].map(z => can(x, z, LOW_CEIL))),
-  can(23, 17, LOW_CEIL), can(27, 17, LOW_CEIL), can(27, (2.3 + HB_HALL) / 2, LOW_CEIL),
-  { kind: 'dome', x: 21.7, z: 9.5, y: LOW_CEIL }, { kind: 'dome', x: 21.7, z: 2.2, y: LOW_CEIL },
+  { kind: 'semiflush', x: 24.8, z: 17.0, y: LOW_CEIL },                           // lower hall, in the middle (photo 49)
+  can(27, (2.3 + HB_HALL) / 2, LOW_CEIL),
+  can(21.75, 7.0, LOW_CEIL), can(21.75, 12.0, LOW_CEIL),                        // laundry: two high hats on the centreline, door to back wall
+  { kind: 'dome', x: 21.7, z: 2.2, y: LOW_CEIL },
   { kind: 'dome', x: 27.2, z: 9.5, y: LOW_CEIL },
   { kind: 'shop', x: 5, z: 7, y: LOW_CEIL, len: 8 }, { kind: 'shop', x: 13, z: 7, y: LOW_CEIL, len: 8 },
   { kind: 'shop', x: 5, z: 20, y: LOW_CEIL, len: 8 }, { kind: 'shop', x: 14, z: 20, y: LOW_CEIL, len: 8 },
   // stairwells
   { kind: 'pendant', x: 24.8, z: 25.2, y: MAIN_CEIL, drop: 3.2 },
   // main level
-  { kind: 'dome', x: 18.5, z: 14, y: MAIN_CEIL },     // one light in the upstairs hall
+  { kind: 'semiflush', x: 18.5, z: 14, y: MAIN_CEIL },   // one light in the upstairs hall (photos 5, 31)
   { kind: 'chandelier', x: 37, z: 15.1, y: MAIN_CEIL, drop: 2.9 },
   can(31, 4.8, MAIN_CEIL), can(35.5, 4.8, MAIN_CEIL), can(40.5, 4.8, MAIN_CEIL), can(31, 8, MAIN_CEIL),
   can(32.5, 23.5, MAIN_CEIL), can(41, 23.5, MAIN_CEIL), can(32.5, 31.5, MAIN_CEIL), can(41, 31.5, MAIN_CEIL),
@@ -301,6 +305,13 @@ export const FIXTURES = [
   can(23.5, 5, MAIN_CEIL), can(25.2, 9.0, MAIN_CEIL),
   can(18.3, 2.8, MAIN_CEIL), can(17.2, 6.9, MAIN_CEIL),
   { kind: 'dome', x: 17.4, z: 10.4, y: MAIN_CEIL },
+];
+
+// Ceiling smoke detectors: bedrooms, the bedroom hall and downstairs [x, z, ceiling]
+export const SMOKE = [
+  [12.8, 10.6, MAIN_CEIL], [8.6, 16.2, MAIN_CEIL], [12.4, 19.9, MAIN_CEIL],   // bedrooms: just inside each door
+  [13.0, 14.0, MAIN_CEIL],
+  [36.9, 17.5, LOW_CEIL], [27.6, 16.2, LOW_CEIL],
 ];
 
 // Sun: early afternoon, late September. North on the plans points up-left, so the sun sits
@@ -387,8 +398,8 @@ export const ART = [
   art('z', 10.9, 1, 22.8, MAIN + 5.3, 1.1, 1.4, 'whale', 'white', true),
   art('x', 27.65, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
   art('z', 20.6, -1, 21.3, MAIN + 5.4, 2.2, 1.8, 'nautical', 'none'),               // nursery decal over the crib (no name)
-  art('z', 44.75, -1, 3.2, LOW + 5.7, 3.4, 2.4, 'seascape', 'silver'),              // playroom (photos 39, 40)
-  art('z', 44.75, -1, 20.4, LOW + 5.7, 3.5, 2.5, 'sailboats', 'silver'),           // playroom, over the lounge end of the couch (photo 41)
+  art('z', 44.75, -1, (0.25 + (10.3 - 0.29)) / 2, LOW + 5.6, 4.5, 3.6, 'seascape', 'silver'),   // centred between the corner and the window trim              // playroom, the far side of the window (photos 39-41)
+  art('z', 44.75, -1, (21.0 + 34.75) / 2, LOW + 5.6, 6.2, 4.2, 'sailboats', 'silver'),   // playroom, centred over the couch (photo 41)
   art('x', 0.25, 1, 34.45, LOW + 5.6, 1.0, 1.25, 'skyline', 'black', true),         // playroom, by the rear-stair closet (photo 41)
   art('z', 29.05, 1, 28.6, LOW + 5.5, 2.2, 1.7, 'cork', 'wood'),                     // corkboard of drawings over the desk (photos 41, 42)
   art('z', 18.5, 1, 2.2, LOW + 5.4, 1.6, 1.9, 'sailboats', 'white'),                // half bath, over the toilet (photos 45-48)

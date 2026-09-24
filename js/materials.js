@@ -13,8 +13,9 @@ const DEFS = {
   tileBath2: { map: 'tile_bath2.jpg', normalMap: 'tile_bath2_normal.jpg', roughnessMap: 'tile_bath2_rough.jpg', repeat: 4, roughness: 1 },
   carpetBeige: { map: 'carpet_beige.jpg', normalMap: 'carpet_beige_normal.jpg', repeat: 2, roughness: 1, normalScale: 0.8 },
   rugGrey: { map: 'rug_grey.jpg', normalMap: 'rug_grey_normal.jpg', repeat: 2, roughness: 1, normalScale: 1 },
-  rugDining: { map: 'carpet_beige.jpg', normalMap: 'carpet_beige_normal.jpg', repeat: 1.2, roughness: 1, color: '#d8d9c4' },
-  rugLiving: { map: 'carpet_beige.jpg', normalMap: 'carpet_beige_normal.jpg', repeat: 1.2, roughness: 1, color: '#e6dccb' },
+  // area rugs upstairs: a dusty-blue traditional pattern (drawn), laid once across each rug
+  rugDining: { color: '#ffffff', roughness: 1, procedural: 'rugPattern', albedo: [0.33, 0.37, 0.42] },
+  rugLiving: { color: '#ffffff', roughness: 1, procedural: 'rugPattern', albedo: [0.33, 0.37, 0.42] },
   concrete: { map: 'concrete.jpg', repeat: 10, roughness: 0.85 },
   stone: { map: 'concrete.jpg', repeat: 4, roughness: 0.9, color: '#d8cfc0' },
   granite: { map: 'granite_bath1.jpg', repeat: 2.2, roughness: 0.18 },
@@ -121,6 +122,39 @@ function proceduralTexture(kind) {
     for (let i = 0; i < 4000; i++) { g.fillStyle = rnd() < 0.5 ? '#fff' : '#9a917f'; g.fillRect(rnd() * 512, rnd() * 512, 8 + rnd() * 30, 1); }
   } else if (kind.startsWith('art:')) {
     const t = new THREE.CanvasTexture(drawArt(c, g, kind.slice(4), rnd));
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
+    cache.set(kind, t);
+    return t;
+  } else if (kind === 'rugPattern') {
+    c.width = 1024; c.height = 768;
+    const W = c.width, H = c.height, R0 = (a, b) => a + (b - a) * rnd();
+    const field = '#7f97ad', cream = '#ebe3d2', navy = '#2f4260', rust = '#b98a72', sage = '#9fb0a6';
+    g.fillStyle = cream; g.fillRect(0, 0, W, H);
+    const band = (m, col) => { g.fillStyle = col; g.fillRect(m, m, W - 2 * m, H - 2 * m); };
+    band(18, navy); band(26, cream); band(84, rust); band(92, navy); band(100, field);
+    // border motifs: small lozenges and dots in the cream band
+    g.fillStyle = navy;
+    for (let x = 60; x < W - 40; x += 44) for (const y of [55, H - 55]) { g.beginPath(); g.moveTo(x, y - 13); g.lineTo(x + 11, y); g.lineTo(x, y + 13); g.lineTo(x - 11, y); g.fill(); }
+    for (let y = 60; y < H - 40; y += 44) for (const x of [55, W - 55]) { g.beginPath(); g.moveTo(x, y - 13); g.lineTo(x + 11, y); g.lineTo(x, y + 13); g.lineTo(x - 11, y); g.fill(); }
+    // field: soft abrash streaks and scattered floral sprigs
+    for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '30,45,70'},0.05)`; g.fillRect(100, R0(100, H - 100), W - 200, R0(6, 30)); }
+    const sprig = (x, y, s, col) => { g.fillStyle = col; for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; g.beginPath(); g.ellipse(x + Math.cos(a) * s, y + Math.sin(a) * s, s * 0.7, s * 0.35, a, 0, Math.PI * 2); g.fill(); } g.fillStyle = cream; g.beginPath(); g.arc(x, y, s * 0.35, 0, 7); g.fill(); };
+    for (let i = 0; i < 60; i++) { const x = R0(130, W - 130), y = R0(130, H - 130); if (Math.hypot((x - W / 2) / 1.3, y - H / 2) < 190) continue; sprig(x, y, R0(7, 12), [cream, sage, navy][i % 3]); }
+    // central medallion and corner quarter-medallions
+    const medallion = (x, y, r) => {
+      for (const [k, col] of [[1, navy], [0.82, cream], [0.66, rust], [0.5, field], [0.34, cream], [0.18, navy]]) {
+        g.fillStyle = col; g.beginPath();
+        for (let i = 0; i <= 64; i++) { const a = i / 64 * Math.PI * 2, rr = r * k * (1 + 0.12 * Math.cos(a * 8)); g.lineTo(x + Math.cos(a) * rr * 1.35, y + Math.sin(a) * rr); }
+        g.fill();
+      }
+    };
+    medallion(W / 2, H / 2, 150);
+    g.save(); g.beginPath(); g.rect(100, 100, W - 200, H - 200); g.clip();
+    for (const [x, y] of [[100, 100], [W - 100, 100], [100, H - 100], [W - 100, H - 100]]) medallion(x, y, 110);
+    g.restore();
+    // wool texture
+    for (let i = 0; i < 26000; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)'; g.fillRect(rnd() * W, rnd() * H, 2, 2); }
+    const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
     cache.set(kind, t);
     return t;

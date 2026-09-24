@@ -89,10 +89,13 @@ function walls(b, glass, sliders) {
       let ranges = [w.y.slice()];
       for (const op of covering) ranges = subtract(ranges, op.b0, op.b1);
       for (const cut of [L.MAIN - 0.1, L.MAIN + 3]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
-      const pp = p === a0 && !opEdges.has(p) ? p - t / 2 : p;
-      const qq = q === a1 && !opEdges.has(q) ? q + t / 2 : q;
       for (const [s, e0] of ranges) {
         if (e0 - s < 1e-3) continue;
+        // a free wall end runs on by half its thickness to close the corner; where another wall carries
+        // on in line (a butt joint) it stops at the joint so the two faces don't overlap
+        const jp = p === a0 ? joinedAt(w, p, -1, s, e0) : null, jq = q === a1 ? joinedAt(w, q, 1, s, e0) : null;
+        const pp = p === a0 && !opEdges.has(p) ? (jp ? p - 0.01 : p - t / 2) : p;   // joints overlap a hair (no crack)
+        const qq = q === a1 && !opEdges.has(q) ? (jq ? q + 0.01 : q + t / 2) : q;
         // a sloped wall top (lean-to annex) runs from ep at pp to eq at qq
         const isTop = Math.abs(e0 - w.y[1]) < 1e-6;
         const ep = isTop ? wallTop(w, pp) : e0, eq = isTop ? wallTop(w, qq) : e0, e = Math.max(ep, eq);
@@ -112,7 +115,7 @@ function walls(b, glass, sliders) {
           if (!op) return null;
           return op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, a, 0, 0)), op.b0 + 1), op.b0 + 1) : TRIM;
         };
-        const ends = [[pp, -1, opEdges.has(p) ? jambMat(p) : null, p === a0], [qq, 1, opEdges.has(q) ? jambMat(q) : null, q === a1]];
+        const ends = [[pp, -1, opEdges.has(p) ? jambMat(p) : null, p === a0 && !(jp && jp.t >= t - 1e-6)], [qq, 1, opEdges.has(q) ? jambMat(q) : null, q === a1 && !(jq && jq.t >= t - 1e-6)]];
         for (const [a, dir, jm, isWallEnd] of ends) {
           if (!jm && !isWallEnd) continue;
           const mat = jm || paintFor(roomAt(...xz(wp(alongX, c, a + dir * 0.3, 0, 0)), ym), ym);
@@ -127,8 +130,8 @@ function walls(b, glass, sliders) {
           if (Math.abs(op.b0 - e0) < 1e-6) b.poly([wp(alongX, c, p, -t / 2, e0), wp(alongX, c, q, -t / 2, e0), wp(alongX, c, q, t / 2, e0), wp(alongX, c, p, t / 2, e0)],
             TRIM, { n: [0, 1, 0] });
         }
-        const lo = wp(alongX, c, pp, -t / 2, s), hi = wp(alongX, c, qq, t / 2, e);
-        b.collider(Math.min(lo[0], hi[0]), Math.max(lo[0], hi[0]), s, e, Math.min(lo[2], hi[2]), Math.max(lo[2], hi[2]));
+        const lo = wp(alongX, c, pp, -t / 2, s), hi = wp(alongX, c, qq, t / 2, e), ce = Math.min(e, w.colTop ?? Infinity);
+        if (ce > s) b.collider(Math.min(lo[0], hi[0]), Math.max(lo[0], hi[0]), s, ce, Math.min(lo[2], hi[2]), Math.max(lo[2], hi[2]));
       }
     }
     for (const op of w.ops) {
@@ -138,6 +141,19 @@ function walls(b, glass, sliders) {
       else if (op.garageDoor) garageTrim(b, w, op);
     }
   }
+}
+// The collinear wall (if any) that continues past `pos` in direction `dir` over heights s..e.
+function joinedAt(w, pos, dir, s, e) {
+  const me = wallInfo(w);
+  for (const w2 of L.WALLS) {
+    if (w2 === w) continue;
+    const q = wallInfo(w2);
+    if (q.alongX !== me.alongX || Math.abs(q.c - me.c) > 1e-3) continue;
+    if (Math.min(e, w2.y[1]) - Math.max(s, w2.y[0]) < 0.01) continue;
+    const f = pos + dir * 0.05;
+    if (f > q.a0 && f < q.a1) return q;
+  }
+  return null;
 }
 function subtract(ranges, a, bb) {
   const out = [];
@@ -406,7 +422,7 @@ function floorsAndCeilings(b, glass) {
     }
     if (r.rug) {
       const [x0, x1, z0, z1, key] = r.rug, y = r.h[0] + 0.045;
-      b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], key, { n: [0, 1, 0] });
+      b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], key, { n: [0, 1, 0], uv: key === 'rugDining' ? 'face' : undefined });
       b.box(x0, x1, r.h[0], y, z0, z1, key, { skip: ['py', 'ny'], dens: 4 });
     }
   }
@@ -750,6 +766,12 @@ function railings(b) {
 
 // ============================================================== fixtures ===
 function fixtures(b, lamps) {
+  // smoke detectors: white domed disc with a vented rim and a small status light
+  for (const [x, z, y] of L.SMOKE) {
+    b.prim(new THREE.CylinderGeometry(0.25, 0.27, 0.08, 32), 'plate', x, y - 0.04, z);
+    b.prim(new THREE.CylinderGeometry(0.17, 0.22, 0.05, 32), 'plate', x, y - 0.105, z);
+    b.prim(new THREE.SphereGeometry(0.018, 8, 6), 'paint:#3fae5a', x + 0.12, y - 0.13, z);
+  }
   for (const f of L.FIXTURES) {
     const { x, z, y } = f;
     if (f.kind === 'can') {
@@ -767,6 +789,29 @@ function fixtures(b, lamps) {
       b.mbox(x - f.len / 2, x + f.len / 2, y - 0.14, y, z - 0.25, z + 0.25, TRIM);
       b.mbox(x - f.len / 2 + 0.1, x + f.len / 2 - 0.1, y - 0.16, y - 0.14, z - 0.2, z + 0.2, 'lampGlow', { bake: false });
       for (const dx of [-f.len / 3, 0, f.len / 3]) lamps.push({ x: x + dx, y: y - 0.2, z, r: 0.25, kind: 'down', I: 9 });
+    } else if (f.kind === 'semiflush') {
+      // hall fixture (photos 5, 31, 49): small canopy and stem, a ribbed cream glass bowl hung ~10" below
+      // the ceiling on three scrolled bronze arms, finial underneath
+      const rimY = y - 0.55, hubY = y - 0.2, R = 0.56;
+      b.prim(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 20), 'bronze', x, y - 0.025, z);
+      b.prim(new THREE.CylinderGeometry(0.03, 0.03, y - hubY, 8), 'bronze', x, (y + hubY) / 2, z);
+      b.prim(new THREE.SphereGeometry(0.06, 12, 8), 'bronze', x, hubY, z);
+      const pts = [];
+      for (let i = 0; i <= 12; i++) { const a = i / 12 * Math.PI / 2; pts.push(new THREE.Vector2(0.001 + Math.sin(a) * R, -Math.cos(a) * 0.34)); }
+      const bowl = new THREE.LatheGeometry(pts, 48);
+      const bp = bowl.attributes.position;                    // shallow ribs round the glass
+      for (let i = 0; i < bp.count; i++) { const px = bp.getX(i), pz = bp.getZ(i), a = Math.atan2(pz, px), k = 1 + 0.02 * Math.cos(a * 24); bp.setX(i, px * k); bp.setZ(i, pz * k); }
+      bowl.computeVertexNormals();
+      b.prim(bowl, 'alabaster', x, rimY, z, 0, { bake: false });
+      b.prim(new THREE.TorusGeometry(R + 0.01, 0.022, 8, 48), 'bronze', x, rimY + 0.005, z, 0, { rx: Math.PI / 2 });
+      for (let i = 0; i < 3; i++) {
+        const a = i * Math.PI * 2 / 3 + 0.3, ca = Math.cos(a), sa = Math.sin(a);
+        const Pt = (r, yy) => new THREE.Vector3(x + ca * r, yy, z + sa * r);
+        b.mesh(new THREE.TubeGeometry(new THREE.CubicBezierCurve3(Pt(0.05, hubY), Pt(0.45, hubY + 0.1), Pt(0.72, rimY + 0.3), Pt(R + 0.01, rimY + 0.005)), 24, 0.02, 6), 'bronze');
+        b.prim(new THREE.TorusGeometry(0.07, 0.014, 6, 16, Math.PI * 1.6), 'bronze', x + ca * 0.5, hubY + 0.02, z + sa * 0.5, -a);
+      }
+      b.prim(new THREE.SphereGeometry(0.045, 10, 8), 'bronze', x, rimY - 0.36, z);
+      lamps.push({ x, y: rimY - 0.12, z, r: 0.3, kind: 'omni', I: 8 });
     } else if (f.kind === 'pendant') {
       // entry pendant: amber glass bowl held in a bronze rim ring by four scrolled arms from a hub on the stem
       const bot = y - f.drop, hubY = bot + 1.15, rimY = bot + 0.45;
@@ -1237,7 +1282,7 @@ const FURN = {
   },
   rugRect(b, f) {
     const [x0, x1, z0, z1] = f.r, y = f.base + 0.04;
-    b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 'rugLiving', { n: [0, 1, 0] });
+    b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 'rugLiving', { n: [0, 1, 0], uv: 'face' });
     b.box(x0, x1, f.base, y, z0, z1, 'rugLiving', { skip: ['py', 'ny'], dens: 4 });
   },
   floorLamp(b, f) {
@@ -1768,7 +1813,8 @@ function doorKnob(lb, mat, x, y, z0, side) {
   lb.prim(plate, mat, x, y, z0, side > 0 ? 0 : Math.PI);
   // turned knob: short neck, then a flattened ball with a broad face
   const V = (r, h) => new THREE.Vector2(r, h);
-  const lathe = new THREE.LatheGeometry([V(0.001, 0), V(0.04, 0), V(0.035, 0.07), V(0.05, 0.1), V(0.1, 0.13), V(0.115, 0.17), V(0.105, 0.21), V(0.07, 0.225), V(0.001, 0.228)], 24);
+  const lathe = new THREE.LatheGeometry([V(0.001, 0), V(0.04, 0), V(0.035, 0.07), V(0.05, 0.1), V(0.1, 0.13), V(0.115, 0.17), V(0.105, 0.21), V(0.07, 0.225), V(0.001, 0.228)], 32);
+  lathe.scale(1, 1, 0.74);                             // oval: squashed top to bottom once turned onto the door
   lb.prim(lathe, mat, x, y, z0 + side * 0.02, 0, { rx: side * Math.PI / 2 });
 }
 function buildGarageDoor(s) {
