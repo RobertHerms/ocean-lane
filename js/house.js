@@ -627,14 +627,15 @@ function stairs(b) {
   const skirt = (x, face, z0, z1, h0, h1) => {
     const bot0 = h0 - 0.2, bot1 = h1 - 0.2;
     b.poly([[x, Math.max(bot0, Math.min(h0, h1)), z0], [x, Math.max(bot1, Math.min(h0, h1)), z1], [x, h1 + 0.75, z1], [x, h0 + 0.75, z0]], TRIM, { n: [face, 0, 0], dens: 7 });
-    b.poly([[x, h0 + 0.75, z0], [x, h1 + 0.75, z1], [x + face * 0.06, h1 + 0.75, z1], [x + face * 0.06, h0 + 0.75, z0]], TRIM, { n: [0, 1, 0], dens: 4 });
+    b.poly([[x - face * 0.06, h0 + 0.75, z0], [x - face * 0.06, h1 + 0.75, z1], [x, h1 + 0.75, z1], [x, h0 + 0.75, z0]], TRIM, { n: [0, 1, 0], dens: 4 });
   };
   const fdH = z => L.LOW + (L.FRONT - L.LOW) * (z - L.FD.z0) / (L.FD.z1 - L.FD.z0);
   skirt(21.0 + 0.06, 1, L.FD.z0, L.FD.z1, L.LOW, L.FRONT);
   skirt(24.6 - 0.06, -1, 19.5, L.FD.z1, fdH(19.5), L.FRONT);
   skirt(28.6 - 0.06, -1, L.FU.z0, L.FU.z1, L.MAIN, L.FRONT);
   skirt(35.25 + 0.06, 1, -4.4, 0, L.MID, L.MAIN);
-  skirt(41.95 - 0.06, -1, -4.4, 0, L.MID, L.LOW);
+  skirt(42.0 - 0.06, -1, -4.4, 0, L.MID, L.LOW);
+  skirt(38.9 + OPEN_W + 0.06, 1, -4.4, 0, L.MID, L.LOW);        // knee wall side of the rear down flight
 }
 
 // ============================================================== railings ===

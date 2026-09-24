@@ -118,7 +118,7 @@ export const WALLS = [
   wz(35, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),
   wx(-8, 35, 45, [0, annexCeil(-8)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),
   // ---- rear stair annex ----
-  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(38.9, 42.2, 0, 8)]),
+  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(39.1, 42.0, 0, 8)]),     // opening flush with the stair's knee wall and closet wall
   wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)]),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
   wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3)]),
@@ -185,9 +185,9 @@ export const RAILINGS = [
 ];
 // Wall-mounted handrails: [x0,z0,x1,z1, h0,h1] (absolute rail height at each end)
 export const HANDRAILS = [
-  [21.05, FD.z0 + 0.1, 21.05, FD.z1 - TREAD, LOW + 0.7 + 2.8, FRONT + 2.8],
-  [42.0, -4.4, 42.0, 0, MID + 2.9, LOW + 2.9],
-  [35.25, -4.4, 35.25, -0.2, MID + 2.9, MAIN + 2.9],
+  [21.2, FD.z0 + 0.1, 21.2, FD.z1 - TREAD, LOW + 0.7 + 2.8, FRONT + 2.8],
+  [41.8, -4.4, 41.8, 0, MID + 2.9, LOW + 2.9],
+  [35.45, -4.4, 35.45, -0.2, MID + 2.9, MAIN + 2.9],
 ];
 
 // ---------------------------------------------------------------- doors ----
@@ -263,8 +263,9 @@ export const SOLIDS = [
   { b: [24.8, 28.8, 0, FRONT, FU.z1, FD.z1], paint: PAINT.tan },
   { b: [20.8, 28.8, 0, FRONT, FD.z1, 30], paint: PAINT.tan },
   { b: [35, 42.2, 0, MID, -8, -4.4], paint: PAINT.tan },
-  { b: [42.2, 45, 0, MID, -8, -3.3], paint: PAINT.tan },
-  { b: [42.2, 45, 0, MAIN, -3.3, 0], paint: PAINT.lower },
+  { b: [42.2, 45, 0, MID, -8, -4.4], paint: PAINT.tan },
+  { b: [42.0, 45, 0, MID, -4.4, -3.3], paint: PAINT.tan },
+  { b: [42.0, 45, 0, MAIN, -3.3, 0], paint: PAINT.lower },
   { b: [26.6, 28.8, MAIN, MAIN_CEIL, 9.7, 11.7], paint: PAINT.tan },      // fridge surround
   { b: [21.2, 28.4, 0, FRONT, 30, 31.4], paint: '#b9b3a7', ext: true },   // front stoop
   { b: [35.6, 39.4, 0, MID, -9.4, -8], paint: '#b9b3a7', ext: true },
