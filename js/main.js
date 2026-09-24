@@ -78,18 +78,21 @@ const probeList = collectProbes(house);
 
 async function loadBake() {
   try {
-    const meta = await (await fetch('baked/meta.json')).json();
+    // meta.json is always fetched fresh; the bake's timestamp versions the big files so a browser never
+    // pairs a cached lightmap from an older bake with the current layout
+    const meta = await (await fetch('baked/meta.json', { cache: 'no-store' })).json();
+    const v = encodeURIComponent(meta.date || meta.seconds || '');
     if (meta.W !== atlas.W || meta.H !== atlas.H || meta.probes !== probeList.count) {
       console.warn('Baked lighting is out of date with the layout — run bake.html', meta, atlas, probeList.count);
       return null;
     }
     setLoading('Loading baked lighting…');
-    const lm = await new HDRLoader().loadAsync('baked/lightmap.hdr');
+    const lm = await new HDRLoader().loadAsync(`baked/lightmap.hdr?v=${v}`);
     lm.flipY = false;
     lm.channel = 1;
     lm.minFilter = THREE.LinearFilter; lm.magFilter = THREE.LinearFilter; lm.generateMipmaps = false;
     lm.needsUpdate = true;
-    const probes = new Float32Array(await (await fetch('baked/probes.bin')).arrayBuffer());
+    const probes = new Float32Array(await (await fetch(`baked/probes.bin?v=${v}`)).arrayBuffer());
     return { meta, lm, probes };
   } catch (e) {
     console.warn('No baked lighting found', e);
