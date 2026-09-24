@@ -68,7 +68,7 @@ function parse(key) {
   const [kind, hex] = key.split(':');
   if (kind === 'paint') return { color: hex, roughness: 0.9 };
   if (kind === 'fabric') return { color: hex, roughness: 0.95, normalMap: 'carpet_beige_normal.jpg', repeat: 0.7, normalScale: 0.35 };
-  if (kind === 'art') return { color: '#ffffff', roughness: 0.55, procedural: key, albedo: [0.45, 0.45, 0.45], alphaTest: hex === 'nautical' ? 0.5 : 0 };
+  if (kind === 'art') return { color: '#ffffff', roughness: 0.55, procedural: key, albedo: [0.45, 0.45, 0.45], alphaTest: ['nautical', 'dreamcatcher'].includes(hex) ? 0.5 : 0 };
   if (kind === 'stain') {
     // oak grain from the stair treads (photo 51), re-tinted to the furniture's stain colour
     const c = new THREE.Color(hex), tread = [0.135, 0.058, 0.034];
@@ -301,6 +301,23 @@ function drawArt(c, g, style, rnd) {
       else { g.strokeStyle = '#43a047'; g.beginPath(); g.moveTo(0, h / 2 - 15); g.lineTo(0, -5); g.stroke(); g.fillStyle = '#ab47bc'; for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; g.beginPath(); g.arc(14 * Math.cos(a), -20 + 14 * Math.sin(a), 11, 0, 7); g.fill(); } }
       g.restore();
       g.fillStyle = '#d32f2f'; g.beginPath(); g.arc(x + w / 2, y + 8, 6, 0, 7); g.fill();
+    });
+  } else if (style === 'dreamcatcher') {
+    // drawn for a 1:2 (w:h) panel, so vertical sizes are halved to keep the hoop round
+    g.clearRect(0, 0, W, H);
+    const cx = 256, cy = 120, rx = 150, ry = 75;
+    g.strokeStyle = '#efe6dc'; g.lineWidth = 9; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = '#f1b7c9'; g.lineWidth = 3;
+    for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; g.beginPath(); g.moveTo(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry); g.lineTo(cx + Math.cos(a + 1.3) * rx * 0.5, cy + Math.sin(a + 1.3) * ry * 0.5); g.stroke(); }
+    g.beginPath(); g.ellipse(cx, cy, rx * 0.5, ry * 0.5, 0, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.ellipse(cx, cy, rx * 0.2, ry * 0.2, 0, 0, Math.PI * 2); g.stroke();
+    const feathers = [[150, '#f6c9d6'], [205, '#f09ab4'], [256, '#fbe3ea'], [307, '#f09ab4'], [362, '#f6c9d6'], [185, '#fde9dd'], [330, '#fde9dd']];
+    feathers.forEach(([x, col], k) => {
+      const top = cy + ry * 0.9 + (k > 4 ? 30 : 0), len = 170 + (k % 3) * 40;
+      g.strokeStyle = '#e8dccf'; g.lineWidth = 3; g.beginPath(); g.moveTo(x, cy + ry * 0.6); g.lineTo(x, top + 20); g.stroke();
+      g.fillStyle = '#f4d58d'; g.beginPath(); g.ellipse(x, top + 18, 9, 5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = col; g.beginPath(); g.ellipse(x, top + 25 + len * 0.5, 24, len * 0.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, top + 25); g.lineTo(x, top + 25 + len); g.stroke();
     });
   } else if (style === 'nautical') {
     g.clearRect(0, 0, W, H);

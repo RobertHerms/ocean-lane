@@ -1,5 +1,7 @@
 // Lightmap atlas layout: every lightmapped polygon gets its own rectangular chart
-// (it is planar, so the chart is its exact flattened shape), packed into shelves.
+// (it is planar, so the chart is its exact flattened shape), packed into shelves. Coplanar pieces of
+// one surface that share a `chart` key (a whole ceiling, one face of a wall) share one chart, so the
+// baked light runs continuously across the joins instead of meeting at a seam.
 // Deterministic — the baker and the walkthrough produce the same atlas from the same parts.
 
 export const BASE_DENSITY = 8;        // texels per foot on interior surfaces (1.5")
@@ -8,23 +10,32 @@ const PAD = 2;                        // texels of padding around each chart
 export function layoutLightmap(parts, density = BASE_DENSITY) {
   const charts = [];
   let area = 0;
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  // chart members: a single polygon, or all polygons with the same chart key
+  const members = [], byKey = new Map();
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
     if (p.kind !== 'poly' || !p.lm) continue;
-    const { pts, n } = p;
-    // plane basis: e1 along the first edge, e2 = n × e1
-    let e1 = sub(pts[1], pts[0]);
+    if (p.chart == null) { members.push([i]); continue; }
+    if (!byKey.has(p.chart)) { byKey.set(p.chart, []); members.push(byKey.get(p.chart)); }
+    byKey.get(p.chart).push(i);
+  }
+  for (const list of members) {
+    const p = parts[list[0]], { pts, n } = p;
+    // plane basis: e1 along the first edge (single polygon) or level along the surface (shared chart)
+    let e1 = list.length === 1 ? sub(pts[1], pts[0]) : Math.abs(n[1]) > 0.9 ? [1, 0, 0] : cross([0, 1, 0], n);
     const l1 = Math.hypot(...e1) || 1;
     e1 = e1.map(v => v / l1);
-    const e2 = [n[1] * e1[2] - n[2] * e1[1], n[2] * e1[0] - n[0] * e1[2], n[0] * e1[1] - n[1] * e1[0]];
-    const uv = pts.map(q => { const d = sub(q, pts[0]); return [dot(d, e1), dot(d, e2)]; });
+    const e2 = cross(n, e1);
+    const O = pts[0];
+    const uvs = list.map(i => parts[i].pts.map(q => { const d = sub(q, O); return [dot(d, e1), dot(d, e2)]; }));
     let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
-    for (const [u, v] of uv) { u0 = Math.min(u0, u); v0 = Math.min(v0, v); u1 = Math.max(u1, u); v1 = Math.max(v1, v); }
+    for (const uv of uvs) for (const [u, v] of uv) { u0 = Math.min(u0, u); v0 = Math.min(v0, v); u1 = Math.max(u1, u); v1 = Math.max(v1, v); }
     const w = u1 - u0, h = v1 - v0;
     const d = (p.dens ?? BASE_DENSITY) * density / BASE_DENSITY;
     const sx = Math.max(d, 1.6 / Math.max(w, 1e-3)), sy = Math.max(d, 1.6 / Math.max(h, 1e-3));
     const tw = Math.max(2, Math.ceil(w * sx)), th = Math.max(2, Math.ceil(h * sy));
-    charts.push({ i, uv, u0, v0, sx, sy, tw, th, cw: tw + 2 * PAD, ch: th + 2 * PAD });
+    charts.push({ list, uvs, u0, v0, sx, sy, tw, th, cw: tw + 2 * PAD, ch: th + 2 * PAD });
     area += (tw + 2 * PAD) * (th + 2 * PAD);
   }
   // atlas width: power of two that keeps the atlas roughly square
@@ -41,11 +52,12 @@ export function layoutLightmap(parts, density = BASE_DENSITY) {
   const H = Math.ceil((y + rowH) / 16) * 16;
   // per-vertex lightmap UVs
   for (const c of charts) {
-    const p = parts[c.i];
-    p.uv1 = c.uv.map(([u, v]) => [
-      (c.ox + PAD + (u - c.u0) * c.sx) / W,
-      (c.oy + PAD + (v - c.v0) * c.sy) / H,
-    ]);
+    c.list.forEach((i, k) => {
+      parts[i].uv1 = c.uvs[k].map(([u, v]) => [
+        (c.ox + PAD + (u - c.u0) * c.sx) / W,
+        (c.oy + PAD + (v - c.v0) * c.sy) / H,
+      ]);
+    });
   }
   return { W, H, count: charts.length };
 }

@@ -60,7 +60,7 @@ const wn = (alongX, s) => (alongX ? [0, 0, s] : [s, 0, 0]);
 const xz = p => [p[0], p[2]];
 
 function walls(b, glass, sliders) {
-  for (const w of L.WALLS) {
+  for (const [wi, w] of L.WALLS.entries()) {
     const { alongX, t, c, a0, a1 } = wallInfo(w);
     const cuts = new Set([a0, a1]);
     for (const op of w.ops) { cuts.add(Math.max(a0, Math.min(a1, op.a0))); cuts.add(Math.max(a0, Math.min(a1, op.a1))); }
@@ -104,7 +104,7 @@ function walls(b, glass, sliders) {
           const mat = paintFor(r, ym);
           const o = side * t / 2;
           b.poly([wp(alongX, c, pp, o, s), wp(alongX, c, qq, o, s), wp(alongX, c, qq, o, eq), wp(alongX, c, pp, o, ep)], mat,
-            { n: wn(alongX, side), dens: r ? undefined : 1.2 });
+            { n: wn(alongX, side), dens: r ? undefined : 1.2, chart: r ? `wall${wi}:${side}:${s < L.MAIN - 0.2 ? 'lo' : 'hi'}` : undefined });
         }
         // end / jamb faces
         const jambMat = a => {
@@ -395,13 +395,13 @@ function floorsAndCeilings(b, glass) {
   const noCeil = new Set(['stcl', 'rcl']);
   for (const r of L.ROOMS) {
     for (const [x0, x1, z0, z1] of r.rects) {
-      if (!noFloor.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0] });
+      if (!noFloor.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
       if (noCeil.has(r.id)) continue;
       const holes = L.SKYLIGHTS.filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
       const cy = z => (r.slope ? L.annexCeil(z) : r.h[1]);
       const k = Math.hypot(1, L.ANNEX_SLOPE), cn = r.slope ? [0, -1 / k, L.ANNEX_SLOPE / k] : [0, -1, 0];
       for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], holes)) {
-        b.poly([[a0, cy(c0), c0], [a1, cy(c0), c0], [a1, cy(c1), c1], [a0, cy(c1), c1]], 'ceiling', { n: cn });
+        b.poly([[a0, cy(c0), c0], [a1, cy(c0), c0], [a1, cy(c1), c1], [a0, cy(c1), c1]], 'ceiling', { n: cn, chart: r.slope ? 'slope' : 'ceil' + r.h[1] });
       }
     }
     if (r.rug) {
@@ -464,10 +464,31 @@ const CROWN = [[0.36, 0], [0.34, -0.03], [0.27, -0.05], [0.2, -0.1], [0.13, -0.1
 const BASE = [[0, 0.45], [0.035, 0.45], [0.06, 0.41], [0.06, 0.0]];
 const RAIL = [[0, 0.1], [0.05, 0.1], [0.07, 0.06], [0.07, -0.02], [0.04, -0.06], [0, -0.06]];
 
+// Does a wall run across the line of a face at `pos`, just in front of it (an inside corner)?
+function crossesInFront(wi, pos, faceC, s, y) {
+  return L.WALLS.some(w2 => {
+    const q = wallInfo(w2);
+    if (q.alongX === wi.alongX || y < w2.y[0] - EPS || y > w2.y[1] + EPS || Math.abs(q.c - pos) > q.t / 2 + 0.05) return false;
+    const f = faceC + s * 0.1;
+    return f > q.a0 - q.t / 2 - EPS && f < q.a1 + q.t / 2 + EPS;
+  });
+}
+// Does another wall carry on in line beyond `pos`?
+function continuesInLine(wi, pos, dir, y) {
+  return L.WALLS.some(w2 => {
+    const q = wallInfo(w2);
+    if (q.alongX !== wi.alongX || Math.abs(q.c - wi.c) > 0.06 || y < w2.y[0] - EPS || y > w2.y[1] + EPS) return false;
+    const f = pos + dir * 0.05;
+    return f > q.a0 && f < q.a1;
+  });
+}
+
 function moldings(b) {
   for (const r of L.ROOMS) {
-    if (['foyer', 'rear', 'stcl', 'rcl'].includes(r.id)) continue;
-    for (const [x0, x1, z0, z1] of r.rects) {
+    if (['rear', 'stcl', 'rcl'].includes(r.id)) continue;
+    const crownOnly = r.id === 'foyer';            // two-storey entry: crown at its ceiling only
+    const list = crownOnly ? [...r.crownRects.map(q => [q, 'crown']), ...r.baseRects.map(q => [q, 'base'])] : r.rects.map(q => [q, 'all']);
+    for (const [[x0, x1, z0, z1], kind] of list) {
       const edges = [['x', z0, x0, x1, 1], ['x', z1, x0, x1, -1], ['z', x0, z0, z1, 1], ['z', x1, z0, z1, -1]];
       for (const [ax, c, e0, e1, s] of edges) {
         for (const w of L.WALLS) {
@@ -483,13 +504,24 @@ function moldings(b) {
             for (const op of w.ops) {
               if (op.b0 - 0.05 <= y + pad && op.b1 + 0.05 >= y - pad) segs = subtract(segs, op.a0 - casingGap, op.a1 + casingGap);
             }
-            for (const [a, bb] of segs) {
+            for (let [a, bb] of segs) {
               if (bb - a < 0.05) continue;
+              let m0 = 0, m1 = 0;
+              if (profile === CROWN) {
+                // outside corner: the wall ends here with nothing across in front of it, so the crown
+                // runs on to the wall's end face and is mitred to meet the crown coming round the corner
+                const outside = (pos, dir) => Math.abs(pos - (dir < 0 ? wi.a0 : wi.a1)) < 1e-3
+                  && !continuesInLine(wi, pos, dir, y) && !crossesInFront(wi, pos, face, s, y);
+                if (outside(a, -1)) { a -= wi.t / 2; m0 = 1; }
+                if (outside(bb, 1)) { bb += wi.t / 2; m1 = 1; }
+              }
               const origin = wi.alongX ? [a, y, face] : [face, y, a];
-              extrude(b, profile, origin, wi.alongX ? [1, 0, 0] : [0, 0, 1], wi.alongX ? [0, 0, s] : [s, 0, 0], bb - a, TRIM, { dens: 8 });
+              extrude(b, profile, origin, wi.alongX ? [1, 0, 0] : [0, 0, 1], wi.alongX ? [0, 0, s] : [s, 0, 0], bb - a, TRIM, { dens: 8, m0, m1 });
             }
             return segs;
           };
+          if (kind === 'crown') { run(r.h[1], CROWN, 0, 0.3); continue; }
+          if (kind === 'base') { run(r.baseY, BASE, 0.29, 0.3); continue; }
           const segs = run(r.h[0], BASE, 0.29, 0.3) || [];
           // duplex outlets along the walls (not in closets)
           if (!/closet/i.test(r.name) && r.id !== 'util') {
@@ -633,7 +665,7 @@ function stairs(b) {
   const fdH = z => L.LOW + (L.FRONT - L.LOW) * (z - L.FD.z0) / (L.FD.z1 - L.FD.z0);
   skirt(21.0 + 0.06, 1, L.FD.z0, L.FD.z1, L.LOW, L.FRONT);
   skirt(24.6 - 0.06, -1, 19.5, L.FD.z1, fdH(19.5), L.FRONT);
-  skirt(28.6 - 0.06, -1, L.FU.z0, L.FU.z1, L.MAIN, L.FRONT);
+  skirt(28.55 - 0.06, -1, L.FU.z0, L.FU.z1, L.MAIN, L.FRONT);
   skirt(35.25 + 0.06, 1, -4.4, 0, L.MID, L.MAIN);
   skirt(42.0 - 0.06, -1, -4.4, 0, L.MID, L.LOW);
   skirt(38.9 + OPEN_W + 0.06, 1, -4.4, 0, L.MID, L.LOW);        // knee wall side of the rear down flight
@@ -1613,9 +1645,11 @@ function chair(b, x, z, F, face, wood, style) {
   b.collider(x - s, x + s, F, F + 1.7, z - s, z + s);
 }
 function appliance(b, f, front) {
-  const [x0, x1, z0, z1] = f.r, F = f.base, H = 3.55;
-  b.box(x0, x1, F, F + H, z0, z1, 'enamelWhite', { skip: ['ny', 'pz'], collide: true, bevel: 0.05 });
+  // the cabinet stands on four levelling feet (keeps its lower edges clear of the floor)
+  const [x0, x1, z0, z1] = f.r, F = f.base + 0.06, H = 3.55 - 0.06;
+  b.box(x0, x1, F, F + H, z0, z1, 'enamelWhite', { skip: ['pz'], collide: true, bevel: 0.05 });
   b.poly([[x0, F, z1], [x1, F, z1], [x1, F + H, z1], [x0, F + H, z1]], front, { n: [0, 0, 1], uv: 'face', dens: 8 });
+  for (const [px, pz] of [[x0 + 0.2, z0 + 0.2], [x1 - 0.2, z0 + 0.2], [x0 + 0.2, z1 - 0.2], [x1 - 0.2, z1 - 0.2]]) b.mbox(px - 0.05, px + 0.05, f.base, F, pz - 0.05, pz + 0.05, 'tvBody');
   b.box(x0, x1, F + H, F + H + 0.55, z0, z0 + 0.45, 'enamelWhite', { skip: ['ny'], bevel: 0.05 });
 }
 
@@ -1721,13 +1755,21 @@ function buildDoor(s) {
     for (const side of [-1, 1]) lb.mbox(0.45, w - 0.45, 1.4, 6.2, side > 0 ? T / 2 : -T / 2 - 0.02, side > 0 ? T / 2 + 0.02 : -T / 2, 'frosted');
   }
   const knob = s.style === 'front' ? 'bronze' : 'nickel';
-  for (const side of [-1, 1]) {
-    lb.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 16), knob, w - 0.25, 3.0, side * (T / 2 + 0.015), 0, { rx: Math.PI / 2 });
-    lb.prim(new THREE.SphereGeometry(0.1, 16, 12), knob, w - 0.25, 3.0, side * (T / 2 + 0.16));
-    lb.prim(new THREE.CylinderGeometry(0.04, 0.04, 0.14, 10), knob, w - 0.25, 3.0, side * (T / 2 + 0.08), 0, { rx: Math.PI / 2 });
-  }
+  for (const side of [-1, 1]) doorKnob(lb, knob, w - 0.25, 3.0, side * T / 2, side);
   for (const y of [0.9, 3.4, 5.9]) lb.mbox(-0.03, 0.05, y - 0.15, y + 0.15, -0.05, 0.05, knob);
   return { spec: s, parts: lb.parts, w: w + 0.04 };
+}
+// Knob on an arched rectangular rose, projecting along ±z from the door face at z0.
+function doorKnob(lb, mat, x, y, z0, side) {
+  const rose = new THREE.Shape();
+  rose.moveTo(-0.1, -0.16); rose.lineTo(0.1, -0.16); rose.lineTo(0.1, 0.06);
+  rose.absarc(0, 0.06, 0.1, 0, Math.PI, false); rose.lineTo(-0.1, -0.16);
+  const plate = new THREE.ExtrudeGeometry(rose, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 2, curveSegments: 16 });
+  lb.prim(plate, mat, x, y, z0, side > 0 ? 0 : Math.PI);
+  // turned knob: short neck, then a flattened ball with a broad face
+  const V = (r, h) => new THREE.Vector2(r, h);
+  const lathe = new THREE.LatheGeometry([V(0.001, 0), V(0.04, 0), V(0.035, 0.07), V(0.05, 0.1), V(0.1, 0.13), V(0.115, 0.17), V(0.105, 0.21), V(0.07, 0.225), V(0.001, 0.228)], 24);
+  lb.prim(lathe, mat, x, y, z0 + side * 0.02, 0, { rx: side * Math.PI / 2 });
 }
 function buildGarageDoor(s) {
   const w = s.x1 - s.x0, lb = new Builder();

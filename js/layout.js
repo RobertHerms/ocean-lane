@@ -73,7 +73,8 @@ export const ROOMS = [
   room('lc', 'Linen closet', [MAIN, MAIN_CEIL], [[18.9, 20.8, 15.6, 18.2]], 'wood', PAINT.closet),
   room('upcl', 'Coat closet', [MAIN, MAIN_CEIL], [[20.8, 24.8, 15.6, 20]], 'wood', PAINT.closet),
   // two-storey stairwells
-  room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileLanding', PAINT.tan, { crown: true }),
+  room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileLanding', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
+    baseY: FRONT, baseRects: [[20.8, 24.8, FD.z1, 30], [24.8, 28.8, FU.z1, 30]] }),
   room('rear', 'Rear entry & stairs', [LOW, MAIN_CEIL], [[35, 42.2, -8, 0]], 'carpetBeige', PAINT.tan, { slope: true }),
   room('coat', 'Rear closet', [MID, MAIN_CEIL], [[42.2, 45, -8, -3.3]], 'carpetBeige', PAINT.closet, { slope: true }),
   // lower level (1st floor plan)
@@ -105,7 +106,7 @@ export const WALLS = [
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
   wx(GARAGE_Z, 0, 20.8, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
     hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
-  wz(20.8, GARAGE_Z, 35, ALL, [], EXT),
+  wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T }),      // same thickness as the foyer wall it continues
   wx(30, 20.8, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
     win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], EXT),
   wz(28.8, 30, 35, ALL, [], EXT),
@@ -118,12 +119,12 @@ export const WALLS = [
   wz(35, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),
   wx(-8, 35, 45, [0, annexCeil(-8)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),
   // ---- rear stair annex ----
-  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(39.1, 42.0, 0, LOW_CEIL)]),   // opening flush with the stair walls, full height (no header)
-  wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)]),
+  wx(0, 35, 45, LO, [door(35.4, 37.9, LOW), open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header)
+  wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)], { t: EXT_T }),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
   wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3)]),
   // header between the kitchen and the rear stairs (the stair ceiling slopes down from its underside)
-  wx(0, 35, 42.2, [MAIN - 0.1, MAIN_CEIL], [open(35, 42.2, MAIN - 0.1, 16.75)]),
+  wx(0, 35, 42.2, [MAIN - 0.1, MAIN_CEIL], [open(35, 42.2, MAIN - 0.1, 16.75)], { t: EXT_T }),
   // ---- main level interior ----
   wx(12.3, 0, 15.5, HI, [door(0.6, 5.8, MAIN), door(11.9, 14.9, MAIN)]),
   wx(14.3, 0, 10.7, HI, [door(6.8, 10.1, MAIN, { bypass: true })]),
@@ -136,7 +137,8 @@ export const WALLS = [
   wx(8.5, 15.5, 19.3, HI),
   wz(19.3, 6.5, 12.3, HI),
   wx(12.3, 15.5, 19.3, HI),
-  wx(11.7, 19.3, 26.6, HI, [door(21.1, 23.6, MAIN)]),
+  wx(11.7, 19.3, 28.8, HI, [door(21.1, 23.6, MAIN)]),      // runs on past the fridge enclosure so the hall wall is one plane
+  wz(28.8, 9.9, 11.7, HI),                                 // dining-room face of the fridge enclosure
   wz(26.6, 0, 11.7, HI),
   wx(9.7, 32.2, 45, HI, [open(35, 41, MAIN + 3.3, MAIN + 7.0, { passThrough: true })]),
   wz(32.2, 9.7, 11.6, HI),
@@ -148,8 +150,8 @@ export const WALLS = [
   wz(20.8, 15.6, 20, HI),
   wz(24.8, 15.6, 20, HI, [door(16.1, 18.6, MAIN)]),          // coat closet: door faces the dining room
   wx(20, 20.8, 24.8, HI),                                  // ...and a solid wall faces the stairs
-  wz(20.8, 20, 30, ALL),                                   // stairwell west (garage / bedroom 3 side)
-  wz(28.8, 19.5, 30, [0, MAIN + 0.1]),                     // stairwell east below the living-room railing
+  wz(20.8, 20, GARAGE_Z, ALL),                             // stairwell west (garage / bedroom 3 side)
+  wz(28.8, 19.5, 30, [0, MAIN + 0.1], [], { t: EXT_T }),   // stairwell east below the living-room railing (flush with the front wall)
   // ---- lower level interior (1st floor plan) ----
   wz(18.3, 0, 14.6, LO),
   wx(4.5, 18.3, 25.2, LO),
@@ -215,7 +217,7 @@ export const DOORS = [
   d('clA2', 'Closet', 'x', 12.3, 3.2, 5.8, 1, -1, MAIN, 'panel', 'clA'),
   ...bypass('clB', 'Closet', 'x', 14.3, 6.8, 10.1, 1, MAIN),
   d('br2', 'Bedroom 2', 'z', 10.7, 14.8, 17.5, 0, -1, MAIN),
-  d('br3', 'Bedroom 3', 'x', 17.9, 11.0, 13.8, 1, 1, MAIN),
+  d('br3', 'Bedroom 3', 'x', 17.9, 11.0, 13.8, 0, 1, MAIN),     // hinged on the west side: opens to the right going in
   ...bypass('cl3', 'Closet', 'x', 18.2, 14.8, 18.3, 1, MAIN),
   d('lc', 'Linen closet', 'x', 15.6, 19.1, 20.6, 1, -1, MAIN),
   d('upcl', 'Coat closet', 'z', 24.8, 16.1, 18.6, 0, 1, MAIN),
@@ -347,7 +349,7 @@ export const FURNITURE = [
   { type: 'sectional', r: [36.2, 44.75, 21.0, 34.75], base: LOW, fabric: '#6e5f51', chaise: 5.6 },   // chaise lounge at the north end
   { type: 'coffeeTable', r: [37.6, 40.6, 24.8, 29.4], base: LOW, wood: '#2a1d17' },
   { type: 'endTable', r: [42.5, 44.65, 18.6, 20.8], base: LOW, wood: '#2a1d17' },                         // beside the lounge (photo 41)
-  { type: 'console', r: [29.0, 30.3, 20.6, 27.6], base: LOW, face: 'e', tv: 'msRachel' },                     // up against the desk
+  { type: 'console', r: [29.05, 30.35, 20.6, 27.6], base: LOW, face: 'e', tv: 'msRachel' },                     // up against the desk
   { type: 'lDesk', r: [29.05, 34.6, 27.6, 34.75], base: LOW, wood: '#2c2521' },
   // Laundry
   { type: 'washer', r: [19.3, 21.9, 4.8, 7.4], base: LOW },
@@ -380,14 +382,15 @@ export const ART = [
   art('z', 0.25, 1, 26.5, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
   art('z', 0.25, 1, 24.8, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
   art('z', 0.25, 1, 22.6, MAIN + 5.1, 2.0, 2.0, 'dahlia', 'white'),                // (photo 30)
+  art('x', 27.65, -1, 2.15, MAIN + 5.3, 0.9, 1.8, 'dreamcatcher', 'none'),          // over the headboard (photos 27, 30)
   art('z', 10.9, 1, 24.3, MAIN + 5.3, 1.1, 1.4, 'anchor', 'white', true),           // nursery, over the changing table (photos 34, 36)
   art('z', 10.9, 1, 22.8, MAIN + 5.3, 1.1, 1.4, 'whale', 'white', true),
   art('x', 27.65, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
   art('z', 20.6, -1, 21.3, MAIN + 5.4, 2.2, 1.8, 'nautical', 'none'),               // nursery decal over the crib (no name)
   art('z', 44.75, -1, 3.2, LOW + 5.7, 3.4, 2.4, 'seascape', 'silver'),              // playroom (photos 39, 40)
   art('z', 44.75, -1, 20.4, LOW + 5.7, 3.5, 2.5, 'sailboats', 'silver'),           // playroom, over the lounge end of the couch (photo 41)
-  art('x', 0.2, 1, 34.45, LOW + 5.6, 1.0, 1.25, 'skyline', 'black', true),         // playroom, by the rear-stair closet (photo 41)
-  art('z', 29.0, 1, 28.6, LOW + 5.5, 2.2, 1.7, 'cork', 'wood'),                     // corkboard of drawings over the desk (photos 41, 42)
+  art('x', 0.25, 1, 34.45, LOW + 5.6, 1.0, 1.25, 'skyline', 'black', true),         // playroom, by the rear-stair closet (photo 41)
+  art('z', 29.05, 1, 28.6, LOW + 5.5, 2.2, 1.7, 'cork', 'wood'),                     // corkboard of drawings over the desk (photos 41, 42)
   art('z', 18.5, 1, 2.2, LOW + 5.4, 1.6, 1.9, 'sailboats', 'white'),                // half bath, over the toilet (photos 45-48)
   art('x', 14.7, 1, 26.8, LOW + 5.4, 3.0, 1.0, 'panorama', 'black'),                // lower hall (photo 50)
   // bedroom 1: frames standing on the dresser under the TV (photo 17) and a pair over the tall dresser

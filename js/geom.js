@@ -42,7 +42,7 @@ export class Builder {
     if (Array.isArray(o.uv)) uv = o.uv;
     else if (o.uv === 'face') uv = faceUV(pts, n, o.rect, o.up);
     else uv = pts.map(p => worldUV(p, n));
-    this.parts.push({ kind: 'poly', pts, n, uv, mat, lm: o.lm !== false, dens: o.dens, bake: o.bake !== false, tag: o.tag });
+    this.parts.push({ kind: 'poly', pts, n, uv, mat, lm: o.lm !== false, dens: o.dens, bake: o.bake !== false, tag: o.tag, chart: o.chart });
     return this;
   }
 
@@ -185,12 +185,14 @@ export function extrude(b, profile, origin, dir, normal, len, mat, o = {}) {
       origin[1] + up,
       origin[2] + dir[2] * t + normal[2] * out,
     ];
-    const pts = [p(0, o0, u0), p(len, o0, u0), p(len, o1, u1), p(0, o1, u1)];
+    const m0 = o.m0 || 0, m1 = o.m1 || 0;          // mitres: the profile's outer edge runs on past the ends
+    const pts = [p(-m0 * o0, o0, u0), p(len + m1 * o0, o0, u0), p(len + m1 * o1, o1, u1), p(-m0 * o1, o1, u1)];
     // Facing direction of the strip: profiles are traced from the wall edge outward and around,
     // so the face is on the (-du, dout) side of each segment.
     const du = u1 - u0, dout = o1 - o0;
     const nOut = [normal[0] * -du, dout, normal[2] * -du];
     const l = Math.hypot(...nOut) || 1;
-    b.poly(pts, mat, { ...o, n: [nOut[0] / l, nOut[1] / l, nOut[2] / l] });
+    const { m0: _a, m1: _b, ...po } = o;
+    b.poly(pts, mat, { ...po, n: [nOut[0] / l, nOut[1] / l, nOut[2] / l] });
   }
 }
