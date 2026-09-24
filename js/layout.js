@@ -344,8 +344,9 @@ export const FURNITURE = [
   { type: 'glider', x: 12.6, z: 26.45, base: MAIN },
   { type: 'changingTable', r: [10.9, 12.2, 22.4, 24.7], base: MAIN },                                            // west wall, leaves a way past the open door
   // Playroom
-  { type: 'sectional', r: [36.2, 44.75, 21.0, 34.75], base: LOW, fabric: '#6e5f51' },
+  { type: 'sectional', r: [36.2, 44.75, 21.0, 34.75], base: LOW, fabric: '#6e5f51', chaise: 5.6 },   // chaise lounge at the north end
   { type: 'coffeeTable', r: [37.6, 40.6, 24.8, 29.4], base: LOW, wood: '#2a1d17' },
+  { type: 'endTable', r: [42.5, 44.65, 18.6, 20.8], base: LOW, wood: '#2a1d17' },                         // beside the lounge (photo 41)
   { type: 'console', r: [29.0, 30.3, 20.6, 27.6], base: LOW, face: 'e', tv: 'msRachel' },                     // up against the desk
   { type: 'lDesk', r: [29.05, 34.6, 27.6, 34.75], base: LOW, wood: '#2c2521' },
   // Laundry
@@ -378,14 +379,28 @@ export const ART = [
   art('z', 44.75, -1, 18.9, MAIN + 5.2, 1.3, 1.6, 'bw5', 'black', true),            // dining, right of the window (photo 2)
   art('z', 0.25, 1, 26.5, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
   art('z', 0.25, 1, 24.8, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
+  art('z', 0.25, 1, 22.6, MAIN + 5.1, 2.0, 2.0, 'dahlia', 'white'),                // (photo 30)
   art('z', 10.9, 1, 24.3, MAIN + 5.3, 1.1, 1.4, 'anchor', 'white', true),           // nursery, over the changing table (photos 34, 36)
   art('z', 10.9, 1, 22.8, MAIN + 5.3, 1.1, 1.4, 'whale', 'white', true),
   art('x', 27.65, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
   art('z', 20.6, -1, 21.3, MAIN + 5.4, 2.2, 1.8, 'nautical', 'none'),               // nursery decal over the crib (no name)
   art('z', 44.75, -1, 3.2, LOW + 5.7, 3.4, 2.4, 'seascape', 'silver'),              // playroom (photos 39, 40)
-  art('z', 44.75, -1, 15.6, LOW + 5.7, 1.4, 2.0, 'beach', 'silver'),                // playroom (photos 39, 44)
+  art('z', 44.75, -1, 20.4, LOW + 5.7, 3.5, 2.5, 'sailboats', 'silver'),           // playroom, over the lounge end of the couch (photo 41)
+  art('x', 0.2, 1, 34.45, LOW + 5.6, 1.0, 1.25, 'skyline', 'black', true),         // playroom, by the rear-stair closet (photo 41)
+  art('z', 29.0, 1, 28.6, LOW + 5.5, 2.2, 1.7, 'cork', 'wood'),                     // corkboard of drawings over the desk (photos 41, 42)
   art('z', 18.5, 1, 2.2, LOW + 5.4, 1.6, 1.9, 'sailboats', 'white'),                // half bath, over the toilet (photos 45-48)
   art('x', 14.7, 1, 26.8, LOW + 5.4, 3.0, 1.0, 'panorama', 'black'),                // lower hall (photo 50)
+  // bedroom 1: frames standing on the dresser under the TV (photo 17) and a pair over the tall dresser
+  art('x', 11.35, -1, 6.75, MAIN + 3.1 + 0.4, 0.62, 0.8, 'bw2', 'black', true),
+  art('x', 11.45, -1, 7.45, MAIN + 3.1 + 0.3, 0.75, 0.6, 'beach', 'silver', true),
+  art('x', 11.35, -1, 10.75, MAIN + 3.1 + 0.36, 0.58, 0.72, 'flower', 'white', true),
+  art('z', 15.3, -1, 4.6, MAIN + 6.0, 0.9, 1.15, 'bw3', 'black', true),
+  art('z', 15.3, -1, 6.0, MAIN + 6.0, 0.9, 1.15, 'bw4', 'black', true),
+  // living room: a small gallery around the desk (photo 2)
+  art('z', 29.05, 1, 31.2, MAIN + 5.5, 1.0, 1.25, 'bw5', 'black', true),
+  art('z', 29.05, 1, 32.55, MAIN + 5.85, 1.1, 0.85, 'beach', 'white', true),
+  art('z', 29.05, 1, 32.55, MAIN + 4.95, 0.8, 0.65, 'bw2', 'black', true),
+  art('z', 29.05, 1, 33.9, MAIN + 5.5, 1.0, 1.25, 'skyline', 'black', true),
 ];
 
 // Start just inside the front door, on the entry landing, facing the stairs.

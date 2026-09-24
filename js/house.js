@@ -1314,18 +1314,34 @@ const FURN = {
     b.box(x - 0.9, x + 0.9, F, F + 0.4, z - 0.9, z + 0.9, 'paint:#9a948c', { skip: ['ny'] });
   },
   sectional(b, f) {
-    // L-shaped: long run with its back on the east wall, return along the south end facing north
+    // L-shaped: long run with its back on the east wall, return along the south end facing north;
+    // f.chaise: a chaise lounge that deep (from the wall) at the other (north) end
     const [x0, x1, z0, z1] = f.r, F = f.base, fab = 'fabric:' + f.fabric;
-    const D = 3.0;
+    const D = 3.0, CW = f.chaise ? 2.8 : 0;
+    if (f.chaise) {
+      b.box(x1 - f.chaise, x1 - D, F + 0.3, F + 1.45, z0, z0 + CW, fab, { skip: ['ny'], collide: true, bevel: 0.1 });
+      b.box(x1 - f.chaise + 0.05, x1 - 0.82, F + 1.45, F + 1.95, z0 + 0.05, z0 + CW - 0.05, fab, { skip: ['ny'], dens: 5, bevel: 0.14 });
+    }
     b.box(x1 - D, x1, F + 0.3, F + 1.45, z0, z1, fab, { skip: ['ny'], collide: true, bevel: 0.1 });
     b.box(x0, x1 - D, F + 0.3, F + 1.45, z1 - D, z1, fab, { skip: ['ny'], collide: true, bevel: 0.1 });
     b.box(x1 - 0.8, x1, F + 1.45, F + 2.85, z0, z1, fab, { skip: ['ny'], bevel: 0.14 });
     b.box(x0, x1 - 0.8, F + 1.45, F + 2.85, z1 - 0.8, z1, fab, { skip: ['ny'], bevel: 0.14 });
-    b.box(x1 - D, x1 - 0.8, F + 1.45, F + 2.2, z0, z0 + 0.6, fab, { skip: ['ny'], bevel: 0.14 });
+    if (!f.chaise) b.box(x1 - D, x1 - 0.8, F + 1.45, F + 2.2, z0, z0 + 0.6, fab, { skip: ['ny'], bevel: 0.14 });
     b.box(x0, x0 + 0.6, F + 1.45, F + 2.2, z1 - D, z1 - 0.8, fab, { skip: ['ny'], bevel: 0.14 });
-    for (let zz = z0 + 0.65; zz < z1 - 0.85; zz += 2.25) b.box(x1 - D + 0.05, x1 - 0.82, F + 1.45, F + 1.95, zz, Math.min(zz + 2.2, z1 - 0.82), fab, { skip: ['ny'], dens: 5, bevel: 0.14 });
-    for (let xx = x0 + 0.65; xx < x1 - D - 0.05; xx += 2.25) b.box(xx, Math.min(xx + 2.2, x1 - D), F + 1.45, F + 1.95, z1 - D + 0.05, z1 - 0.82, fab, { skip: ['ny'], dens: 5, bevel: 0.14 });
-    for (let zz = z0 + 0.65; zz < z1 - 0.85; zz += 2.25) b.box(x1 - 1.3, x1 - 0.75, F + 1.9, F + 2.95, zz, Math.min(zz + 2.2, z1 - 0.82), fab, { skip: ['ny'], dens: 5, bevel: 0.18 });
+    // big cushions: three along the long side, one in the corner, two on the return (backs match the seats)
+    const seat = (a0, a1, c0, c1) => b.box(a0, a1, F + 1.45, F + 1.95, c0, c1, fab, { skip: ['ny'], dens: 5, bevel: 0.14 });
+    const zA = z0 + (f.chaise ? CW : 0.65), zC = z1 - D, g = 0.03;
+    const long = [0, 1, 2].map(i => [zA + (zC - zA) * i / 3 + g, zA + (zC - zA) * (i + 1) / 3 - g]);
+    for (const [c0, c1] of long) seat(x1 - D + 0.05, x1 - 0.82, c0, c1);
+    seat(x1 - D + 0.05, x1 - 0.82, zC + g, z1 - 0.82);                                          // corner
+    const xA = x0 + 0.65, xC = x1 - D;
+    const ret = [0, 1].map(i => [xA + (xC - xA) * i / 2 + g, xA + (xC - xA) * (i + 1) / 2 - g]);
+    for (const [c0, c1] of ret) b.box(c0, c1, F + 1.45, F + 1.95, z1 - D + 0.05, z1 - 0.82, fab, { skip: ['ny'], dens: 5, bevel: 0.14 });
+    const back = (a0, a1, c0, c1) => b.box(a0, a1, F + 1.9, F + 3.05, c0, c1, fab, { skip: ['ny'], dens: 5, bevel: 0.2 });
+    if (f.chaise) back(x1 - 1.3, x1 - 0.75, z0 + g, z0 + CW - g);
+    for (const [c0, c1] of long) back(x1 - 1.3, x1 - 0.75, c0, c1);
+    back(x1 - 1.3, x1 - 0.75, zC + g, z1 - 0.82);
+    for (const [c0, c1] of ret) back(c0, c1, z1 - 1.3, z1 - 0.75);
   },
   sectionalOld(b, f) {
     const [x0, x1, z0, z1] = f.r, F = f.base, fab = 'fabric:' + f.fabric;
@@ -1419,7 +1435,7 @@ const FURN = {
 // Framed prints (L.ART): a frame of four mouldings, an optional white mat and the picture, drawn
 // procedurally by the 'art:<style>' material. A frameless decal just sits on the wall.
 function wallArt(b) {
-  const FR = { black: 'paint:#1d1c1b', white: 'paintedWood', silver: 'paint:#c3c2bd' };
+  const FR = { black: 'paint:#1d1c1b', white: 'paintedWood', silver: 'paint:#c3c2bd', wood: 'stain:#b58a5a' };
   for (const p of L.ART) {
     const alongX = p.wall === 'x', off = t => p.c + p.dir * t;
     const ry = alongX ? (p.dir > 0 ? 0 : Math.PI) : (p.dir > 0 ? Math.PI / 2 : -Math.PI / 2);

@@ -270,6 +270,38 @@ function drawArt(c, g, style, rnd) {
     const cols = ['#f4a9c6', '#fbd3e2', '#c5a3e0', '#e6d8f3', '#8fd3cf', '#d6f0ee'];
     for (let i = 0; i < 6; i++) { g.fillStyle = cols[i]; g.fillRect(0, i * H / 6, W, H / 6 + 1); }
     g.fillStyle = '#ffffff'; g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 40 : 95; g.lineTo(256 + r * Math.cos(a), 256 + r * Math.sin(a)); } g.fill();
+  } else if (style === 'dahlia') {
+    fill('#fbf9f8');
+    const cols = ['#e56aa3', '#b988d8', '#8bd0c9', '#f4a3c4', '#7d5bb3', '#5fb8b0'];
+    for (let ring = 3; ring >= 0; ring--) {
+      const n = 10 + ring * 3, len = 60 + ring * 45;
+      for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2 + ring * 0.3;
+        g.save(); g.translate(256, 256); g.rotate(a); g.fillStyle = cols[(i + ring) % cols.length];
+        g.beginPath(); g.ellipse(len * 0.55, 0, len * 0.5, 12 + ring * 5, 0, 0, Math.PI * 2); g.fill(); g.restore();
+      }
+    }
+  } else if (style === 'skyline') {
+    fill(grad([[0, '#e9ecef'], [1, '#aeb4ba']]));
+    g.fillStyle = '#2b2e33';
+    let x = 0;
+    while (x < W) { const w = R(24, 60), h = R(80, 300); g.fillRect(x, H - h, w - 3, h); if (rnd() < 0.3) g.fillRect(x + w / 2 - 3, H - h - R(20, 60), 6, 60); x += w; }
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    for (let i = 0; i < 160; i++) g.fillRect(R(0, W), H - R(10, 240), 4, 6);
+  } else if (style === 'cork') {
+    fill('#b98c5a');
+    for (let i = 0; i < 5000; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(90,60,30,0.35)' : 'rgba(230,200,150,0.35)'; g.fillRect(R(0, W), R(0, H), 3, 3); }
+    const papers = [[70, 60, 150, 190, '#ffffff'], [240, 40, 170, 130, '#fff6b8'], [90, 280, 160, 150, '#d9f0ff'], [290, 210, 150, 200, '#ffffff'], [420, 60, 80, 110, '#ffd6e7']];
+    papers.forEach(([x, y, w, h, col], k) => {
+      g.save(); g.translate(x + w / 2, y + h / 2); g.rotate(R(-0.12, 0.12)); g.fillStyle = col; g.fillRect(-w / 2, -h / 2, w, h);
+      // a child's crayon drawing: a sun, a house or a flower
+      g.lineWidth = 5; g.lineCap = 'round';
+      if (k % 3 === 0) { g.fillStyle = '#ffc93c'; g.beginPath(); g.arc(0, -10, 26, 0, 7); g.fill(); g.strokeStyle = '#ffb300'; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; g.beginPath(); g.moveTo(34 * Math.cos(a), -10 + 34 * Math.sin(a)); g.lineTo(50 * Math.cos(a), -10 + 50 * Math.sin(a)); g.stroke(); } }
+      else if (k % 3 === 1) { g.strokeStyle = '#e53935'; g.strokeRect(-30, -5, 60, 40); g.beginPath(); g.moveTo(-38, -5); g.lineTo(0, -40); g.lineTo(38, -5); g.stroke(); g.strokeStyle = '#43a047'; g.beginPath(); g.moveTo(-w / 2 + 8, h / 2 - 12); g.lineTo(w / 2 - 8, h / 2 - 12); g.stroke(); }
+      else { g.strokeStyle = '#43a047'; g.beginPath(); g.moveTo(0, h / 2 - 15); g.lineTo(0, -5); g.stroke(); g.fillStyle = '#ab47bc'; for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; g.beginPath(); g.arc(14 * Math.cos(a), -20 + 14 * Math.sin(a), 11, 0, 7); g.fill(); } }
+      g.restore();
+      g.fillStyle = '#d32f2f'; g.beginPath(); g.arc(x + w / 2, y + 8, 6, 0, 7); g.fill();
+    });
   } else if (style === 'nautical') {
     g.clearRect(0, 0, W, H);
     g.fillStyle = '#dfe3ea'; g.beginPath(); g.moveTo(300, 40); g.lineTo(430, 380); g.lineTo(300, 380); g.fill();   // pale sail
