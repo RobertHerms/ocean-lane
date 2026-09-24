@@ -281,13 +281,13 @@ export const SKYLIGHTS = [[21.7, 24.1, 7.8, 10.2], [36.6, 40.4, -6.8, -4.9]];   
 
 // ------------------------------------------------------------- lighting ----
 // Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop
-const can = (x, z, y) => ({ kind: 'can', x, z, y });
+const can = (x, z, y, I) => ({ kind: 'can', x, z, y, I });
 export const FIXTURES = [
   // playroom recessed lights: two rows of six down the long room; lower halls
   ...[32.85, 40.95].flatMap(x => [2.9, 8.75, 14.6, 20.4, 26.25, 32.1].map(z => can(x, z, LOW_CEIL))),
   { kind: 'semiflush', x: 24.8, z: 17.0, y: LOW_CEIL },                           // lower hall, in the middle (photo 49)
   can(27, (2.3 + HB_HALL) / 2, LOW_CEIL),
-  can(21.75, 7.0, LOW_CEIL), can(21.75, 12.0, LOW_CEIL),                        // laundry: two high hats on the centreline, door to back wall
+  can(21.75, 7.0, LOW_CEIL, 24), can(21.75, 12.0, LOW_CEIL, 24),                      // laundry: two high hats on the centreline, door to back wall
   { kind: 'dome', x: 21.7, z: 2.2, y: LOW_CEIL },
   { kind: 'dome', x: 27.2, z: 9.5, y: LOW_CEIL },
   { kind: 'shop', x: 5, z: 7, y: LOW_CEIL, len: 8 }, { kind: 'shop', x: 13, z: 7, y: LOW_CEIL, len: 8 },

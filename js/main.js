@@ -33,7 +33,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMapping = THREE.NeutralToneMapping;   // true colour and contrast (AgX read washed out)
 renderer.toneMappingExposure = 1;
 setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
 
@@ -46,7 +46,7 @@ const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, 
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(window.innerWidth, window.innerHeight);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.12, 0.4, 1.0);
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.05, 0.15, 1.0);   // a faint, tight glow on lamps only
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -356,6 +356,9 @@ if (bake) {
     const env = envs.get(room) || envs.get('ext');
     for (const m of mats) {
       if (!m.isMeshStandardMaterial) continue;
+      // matte surfaces (ceilings, flat paint, fabric) get no reflections: each room's reflection capture
+      // differs, and even a faint sheen made neighbouring rooms' ceilings and walls meet at a visible edge
+      if (m.roughness >= 0.8) continue;
       m.envMap = env;
       m.envMapIntensity = 1;
       // specular only — diffuse light is already baked
@@ -647,6 +650,7 @@ function drawMap() {
 // --------------------------------------------------------- auto exposure ----
 const meterRT = new THREE.WebGLRenderTarget(48, 27, { type: THREE.HalfFloatType });
 const meterBuf = new Uint16Array(48 * 27 * 4);
+const EXPOSURE_KEY = 0.15;                    // mid-grey the auto exposure aims for (lower = darker)
 let exposure = 1, targetExposure = 1, meterBusy = false, lastMeter = 0;
 const half = h => THREE.DataUtils.fromHalfFloat(h);
 async function meter(now) {
@@ -664,7 +668,7 @@ async function meter(now) {
       const l = 0.2126 * half(meterBuf[i]) + 0.7152 * half(meterBuf[i + 1]) + 0.0722 * half(meterBuf[i + 2]);
       s += Math.log(Math.max(l, 1e-4)); n++;
     }
-    targetExposure = clamp(0.19 / Math.exp(s / n), 0.03, 3.5);
+    targetExposure = clamp(EXPOSURE_KEY / Math.exp(s / n), 0.03, 3.5);
   } catch (e) { /* ignore */ }
   meterBusy = false;
 }
@@ -734,7 +738,7 @@ function frame(now) {
     locEl.innerHTML = `<span>${room ? room.name : 'Outside'}</span><small>${levelName(player.feet)}</small>`;
     drawMap();
   }
-  bloom.threshold = 1.4 / Math.max(exposure, 1e-3);
+  bloom.threshold = 3.0 / Math.max(exposure, 1e-3);
   composer.render();
 }
 
@@ -773,10 +777,10 @@ function snap(x, z, feet, yaw, pitch = 0) {
     renderer.setRenderTarget(null);
     let s = 0, n = 0;
     for (let k = 0; k < buf.length; k += 4) { s += Math.log(Math.max(1e-4, 0.2126 * half(buf[k]) + 0.7152 * half(buf[k + 1]) + 0.0722 * half(buf[k + 2]))); n++; }
-    exposure = targetExposure = clamp(0.19 / Math.exp(s / n), 0.03, 3.5);
+    exposure = targetExposure = clamp(EXPOSURE_KEY / Math.exp(s / n), 0.03, 3.5);
     renderer.toneMappingExposure = exposure;
   }
-  bloom.threshold = 1.4 / Math.max(exposure, 1e-3);
+  bloom.threshold = 3.0 / Math.max(exposure, 1e-3);
   composer.render();
   return exposure;
 }

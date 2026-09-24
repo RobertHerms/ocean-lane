@@ -777,7 +777,7 @@ function fixtures(b, lamps) {
     if (f.kind === 'can') {
       b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, x, y - 0.015, z);
       b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', x, y - 0.034, z, 0, { bake: false });
-      lamps.push({ x, y: y - 0.06, z, r: 0.22, kind: 'down', I: 5.5 });
+      lamps.push({ x, y: y - 0.06, z, r: 0.22, kind: 'down', I: f.I || 5.5 });
     } else if (f.kind === 'dome') {
       b.prim(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 32), 'bronze', x, y - 0.025, z);
       const g = new THREE.SphereGeometry(0.58, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
