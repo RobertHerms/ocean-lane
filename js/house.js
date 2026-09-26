@@ -533,7 +533,7 @@ function bowWindow(b, glass) {
       sub.poly([[A0, TOP, zi], [A1, TOP, zi], [A1, TOP, zo], [A0, TOP, zo]], 'siding', { n: [0, 1, 0] });
       const w = { x0: A0, x1: A1, z0: mz, z1: mz, y: [L.BOW.base, TOP], ops: [], t, ext: true };
       windowUnit(sub, gl, w, {
-        a0: wa0, a1: wa1, b0: sill, b1: head, kind: 'window', inSide: -1,
+        a0: wa0, a1: wa1, b0: sill, b1: head, kind: 'window', inSide: -1, panes: [1],
         cw: [wa0 - i0 - 0.005, i1 - wa1 - 0.005], xw: [first ? 0.16 : p0 + ext, last ? 0.16 : p1 + ext],
       });
       extrude(sub, BASE, [i0 - (first ? 0.1 : 0), F, zi], [1, 0, 0], [0, 0, -1], i1 - i0 + (first ? 0.1 : 0) + (last ? 0.1 : 0), TRIM, { dens: 8 });
