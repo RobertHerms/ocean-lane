@@ -506,19 +506,26 @@ function floorsAndCeilings(b, glass) {
   const F = L.FRONT, kx = 24.8 + OPEN_W;              // the landing stops at the knee wall's cap beside the bottom flight
   // entry tile: the 18" grid set out from the front door (a grout line on its centreline, a full tile at the sill)
   const entryUV = pts => pts.map(p => [p[0] - 24.8, -(p[2] - 29.75)]);
-  for (const pts of [[[kx, F, L.FU.z1], [28.8, F, L.FU.z1], [28.8, F, L.FD.z1], [kx, F, L.FD.z1]], [[20.8, F, L.FD.z1], [28.8, F, L.FD.z1], [28.8, F, 30], [20.8, F, 30]]]) {
-    b.poly(pts, 'tileEntry', { n: [0, 1, 0], uv: entryUV(pts) });
+  const landings = [[F, [kx, 28.8, L.FU.z1, L.FD.z1], 'tileEntry'], [F, [20.8, 28.8, L.FD.z1, 30], 'tileEntry'], [L.MID, [35, 42.2, -8, -4.4], 'carpetBeige']];
+  for (const [y, [x0, x1, z0, z1], mat] of landings) {
+    const pts = [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]];
+    b.poly(pts, mat, { n: [0, 1, 0], uv: mat === 'tileEntry' ? entryUV(pts) : undefined });
   }
-  b.poly([[35, L.MID, -8], [42.2, L.MID, -8], [42.2, L.MID, -4.4], [35, L.MID, -4.4]], 'carpetBeige', { n: [0, 1, 0] });
   b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, 29.75], [20.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // under the bottom flight and the landing
   b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, 29.75], [24.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // stair closet
   b.poly([[20.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 20], [20.8, L.LOW_CEIL, 20]], 'ceiling', { n: [0, -1, 0] });
   // exposed edges of the main floor at the stair openings
   b.poly([[20.8, L.LOW_CEIL - 0.05, 20], [24.8, L.LOW_CEIL - 0.05, 20], [24.8, L.MAIN, 20], [20.8, L.MAIN, 20]], 'paint:' + L.PAINT.tan, { n: [0, 0, 1] });
   b.poly([[38.9, L.LOW_CEIL, 0], [42.2, L.LOW_CEIL, 0], [42.2, L.MAIN, 0], [38.9, L.MAIN, 0]], 'paint:' + L.PAINT.tan, { n: [0, 0, -1] });
+  // solids: no top face where a floor at that height already covers it (the carpeted MID landings, the pantry
+  // floor): the paint would be coplanar with the floor and z-fight with it
   for (const s of L.SOLIDS) {
-    const [x0, x1, y0, y1, z0, z1] = s.b;
-    b.box(x0, x1, y0, y1, z0, z1, 'paint:' + s.paint, { skip: ['ny'], collide: true, dens: s.ext ? 2 : undefined });
+    const [x0, x1, y0, y1, z0, z1] = s.b, mat = 'paint:' + s.paint, dens = s.ext ? 2 : undefined;
+    b.box(x0, x1, y0, y1, z0, z1, mat, { skip: ['ny', 'py'], collide: true, dens });
+    const cover = [...floorRectsAt(y1), ...landings.filter(([y]) => Math.abs(y - y1) < 1e-6).map(([, q]) => q)];
+    for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], cover)) {
+      if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) b.poly([[a0, y1, c0], [a0, y1, c1], [a1, y1, c1], [a1, y1, c0]], mat, { n: [0, 1, 0], dens });
+    }
   }
   // skylight wells up through the roof, glazed at the top of a curb
   for (const sk of L.SKYLIGHTS) {
