@@ -128,7 +128,11 @@ export const WALLS = [
     win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], { ...EXT, yCuts: [FRONT] }),   // yCuts: split the faces there (closet below the landing)
   wz(28.8, 30, 35, ALL, [], EXT),
   wz(28.8, 35, UP_LIV_Z, HIX, [], EXT),                  // recess side wall carries on under the living-room overhang
-  wx(35, 28.8, 45, LO, [loWin(31.8, 34.7), loWin(34.7, 38.9), loWin(38.9, 41.6)], EXT),
+  wx(35, 28.8, 45, LO, [
+    loWin(31.3, 34.55, 4.0, 8.75, { panes: [1], xw: [0.06, 0.06], xh: 0.06, noSill: true, cw: [0.29, 0.25] }),
+    loWin(35.05, 38.3, 4.0, 8.75, { panes: [1], xw: [0.06, 0.06], xh: 0.06, noSill: true, cw: [0.25, 0.25] }),
+    loWin(38.8, 42.05, 4.0, 8.75, { panes: [1], xw: [0.06, 0.06], xh: 0.06, noSill: true, cw: [0.25, 0.29] }),
+  ], { ...EXT, yCuts: [SOFFIT_Y] }),   // 3 equal units with stone piers between (photos override the plan's 2.85/4.1/2.9); faces split at the soffit
   wx(UP_LIV_Z, 28.8, 31.2, HIX, [], EXT), wx(UP_LIV_Z, 43.5, 45, HIX, [], EXT),
   // bow window across the living room (BOW, built in house.js); a header drops to its low ceiling
   wx(UP_LIV_Z, BOW.x0, BOW.x1, HIX, [open(BOW.x0, BOW.x1, MAIN - 0.1, BOW.ceil)], { t: EXT_T }),   // bowWindow() adds the shakes under the bow and the seat

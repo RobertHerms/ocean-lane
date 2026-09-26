@@ -2679,6 +2679,8 @@ function exterior(b) {
   b.poly([[28.55, SY, 35.25], [45.25, SY, 35.25], [45.25, SY, LZ], [28.55, SY, LZ]], 'soffit', { n: [0, -1, 0], dens: 2 });
   b.box(-0.25, 20.6, SY, SY + 0.08, UZ, UZ + 0.03, 'vinyl', { skip: ['nz'], dens: 6 });
   b.box(29.13, 45.17, SY, SY + 0.08, LZ, LZ + 0.03, 'vinyl', { skip: ['nz'], dens: 6 });   // one strip: the bow's underside is higher (BOW.base)
+  // continuous stone sill under the three playroom windows (top meets their flat trim; wall outer face z 35.25)
+  b.box(31.04, 42.31, L.LOW + 3.69, L.LOW + 3.94, 35.23, 35.43, 'stoneCap', { skip: ['nz'], dens: 3, bevel: 0.02 });
   stoopRails(b);
   planter(b);
   // ---- ground: lawn; asphalt drive with a grey paver soldier course, scored concrete sidewalk and a lawn
