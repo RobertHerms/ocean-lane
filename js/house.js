@@ -2737,48 +2737,74 @@ function stoopRails(b) {
     b.collider(x - PH, x + PH, 0, 10, zS, ZB + PH);                // west: 6.9 ft drop off the landing edge
   }
 }
-// Raised planter bed curving round the right side of the stoop's foot back to the house: ledgestone wall with a
-// bluestone cap, mulch and a few low shrubs.
+// Garden wall: one continuous ledgestone wall with a stone cap, from the upper bottom step's riser round a front
+// lobe (to under the third playroom window), in past a waist and out along a rear lobe to the playroom's SE corner;
+// a bed of tall ornamental grasses.
 function planter(b) {
-  const f = L.FLIGHTS.find(q => q.id === 'frontStoop'), xs = f.r[1];
-  const P0 = [xs + 0.06, 41.0], P1 = [41.0, 43.2], P2 = [41.0, 35.3], N = 18, T = 0.6, H = 1.45;
-  const at = t => [0, 1].map(i => (1 - t) ** 2 * P0[i] + 2 * (1 - t) * t * P1[i] + t * t * P2[i]);
-  const C = [], I = [], O = [];
+  const PWF = L.PWF, T = 0.6, H = 1.18, CT = 0.12, CH = 0.38, SOIL = 1.05, N = 60;
+  const curve = new THREE.CatmullRomCurve3([
+    [21.1, 46.0], [21.3, 46.9], [22.5, 47.4], [26.0, 47.5], [30.0, 47.5], [33.5, 47.3], [35.8, 46.7], [37.1, 45.2],
+    [37.4, 43.0], [38.0, 41.0], [39.6, 39.2], [42.0, 38.2], [44.3, 37.9], [44.95, 37.3], [44.95, 36.2], [44.95, PWF],
+  ].map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+  const I = [], O = [], CI = [], CO = [];
   for (let i = 0; i <= N; i++) {
-    const t = i / N, p = at(t), q = at(Math.min(1, t + 1e-3)), r = at(Math.max(0, t - 1e-3));
-    const dx = q[0] - r[0], dz = q[1] - r[1], l = Math.hypot(dx, dz), nx = dz / l, nz = -dx / l;   // nx,nz: toward the house side
-    C.push(p); I.push([p[0] + nx * T / 2, p[1] + nz * T / 2]); O.push([p[0] - nx * T / 2, p[1] - nz * T / 2]);
+    const p = curve.getPointAt(i / N), t = curve.getTangentAt(i / N), l = Math.hypot(t.x, t.z);
+    const nx = t.z / l, nz = -t.x / l;                             // toward the bed
+    I.push([p.x + nx * T / 2, p.z + nz * T / 2]); O.push([p.x - nx * T / 2, p.z - nz * T / 2]);
+    CI.push([p.x + nx * CH, p.z + nz * CH]); CO.push([p.x - nx * CH, p.z - nz * CH]);
   }
+  I[N][1] = Math.max(I[N][1], PWF);
   for (let i = 0; i < N; i++) {
     const [a, c] = [O[i], O[i + 1]], [e, g] = [I[i], I[i + 1]];
-    b.poly([[a[0], 0, a[1]], [c[0], 0, c[1]], [c[0], H, c[1]], [a[0], H, a[1]]], 'ledgestone', { n: [c[1] - a[1], 0, a[0] - c[0]].map(v => -v), dens: 2 });
+    b.poly([[a[0], 0, a[1]], [c[0], 0, c[1]], [c[0], H, c[1]], [a[0], H, a[1]]], 'ledgestone', { n: [a[1] - c[1], 0, c[0] - a[0]], dens: 2 });
     b.poly([[e[0], 0, e[1]], [g[0], 0, g[1]], [g[0], H, g[1]], [e[0], H, e[1]]], 'ledgestone', { n: [g[1] - e[1], 0, e[0] - g[0]], dens: 2 });
-    const lo = [Math.min(a[0], c[0], e[0], g[0]), Math.max(a[0], c[0], e[0], g[0]), Math.min(a[1], c[1], e[1], g[1]), Math.max(a[1], c[1], e[1], g[1])];
-    b.collider(lo[0], lo[1], 0, H, lo[2], lo[3]);
-  }
-  // cap: slightly wider than the wall, one slab per segment
-  const CO = [], CI = [];
-  for (let i = 0; i <= N; i++) { const [cx, cz] = C[i], [ix, iz] = I[i]; const ux = (ix - cx) / (T / 2), uz = (iz - cz) / (T / 2); CO.push([cx - ux * 0.4, cz - uz * 0.4]); CI.push([cx + ux * 0.4, cz + uz * 0.4]); }
-  for (let i = 0; i < N; i++) {
-    const q = [CO[i], CO[i + 1], CI[i + 1], CI[i]];
-    b.poly(q.map(([x, z]) => [x, H + 0.12, z]), 'bluestone', { n: [0, 1, 0], dens: 2 });
+    const xs = [a[0], c[0], e[0], g[0]], zs = [a[1], c[1], e[1], g[1]];
+    b.collider(Math.min(...xs), Math.max(...xs), 0, H + CT, Math.min(...zs), Math.max(...zs));
+    // cap: 0.76 wide (0.08 over each face), 0.12 thick, top at 1.30
+    b.poly([CO[i], CO[i + 1], CI[i + 1], CI[i]].map(([x, z]) => [x, H + CT, z]), 'stoneCap', { n: [0, 1, 0], dens: 3 });
     for (const [E, sg] of [[CO, -1], [CI, 1]]) {
       const [e0, e1] = [E[i], E[i + 1]];
-      b.poly([[e0[0], H, e0[1]], [e1[0], H, e1[1]], [e1[0], H + 0.12, e1[1]], [e0[0], H + 0.12, e0[1]]], 'bluestone', { n: [sg * (e1[1] - e0[1]), 0, sg * (e0[0] - e1[0])], dens: 2 });
+      b.poly([[e0[0], H, e0[1]], [e1[0], H, e1[1]], [e1[0], H + CT, e1[1]], [e0[0], H + CT, e0[1]]], 'stoneCap', { n: [sg * (e1[1] - e0[1]), 0, sg * (e0[0] - e1[0])], dens: 3 });
     }
   }
-  // wall ends: against the stoop's side and the house
-  for (const k of [0, N]) b.poly([[O[k][0], 0, O[k][1]], [I[k][0], 0, I[k][1]], [I[k][0], H, I[k][1]], [O[k][0], H, O[k][1]]], 'ledgestone', { n: k === 0 ? [-1, 0, 0] : [0, 0, -1], dens: 2 });
-  // mulch inside the bed (convex: the curve's inside edge closed along the stoop and the house)
-  b.poly([...I.map(([x, z]) => [x, H - 0.25, z]), [xs, H - 0.25, 35.3]], 'mulch', { n: [0, 1, 0], dens: 1 });
-  // low shrubs and a clump of grasses
+  // wall ends are hidden (step riser / house); only the cap's west end shows above the 1.25 step
+  b.poly([[CO[0][0], H, CO[0][1]], [CI[0][0], H, CI[0][1]], [CI[0][0], H + CT, CI[0][1]], [CO[0][0], H + CT, CO[0][1]]], 'stoneCap', { n: [0, 0, -1], dens: 3 });
+  // bed: the wall's inside edge A0→M, west along the playroom face, south down the stoop's east face, west along
+  // the lower landing's south edge, closing up the upper step's east end to A0
+  const loop = [...I, [29.05, PWF], [29.05, 45.0], [21.4, 45.0]];
+  const tris = THREE.ShapeUtils.triangulateShape(loop.map(([x, z]) => new THREE.Vector2(x, z)), []);
+  for (const t of tris) b.poly(t.map(k => [loop[k][0], SOIL, loop[k][1]]), 'mulch', { n: [0, 1, 0], dens: 1 });
+  // tall ornamental grasses: fountains of thin blades
   let seed = 11;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (const [x, z, r] of [[30.2, 37.2, 0.9], [32.6, 38.9, 1.0], [35.2, 39.6, 0.95], [37.9, 38.6, 0.9], [39.4, 36.4, 0.8], [30.4, 39.8, 0.7], [34.0, 36.4, 0.75], [36.9, 36.1, 0.7]]) {
-    const g = new THREE.IcosahedronGeometry(r, 1), pos = g.attributes.position;
-    for (let i = 0; i < pos.count; i++) { const k = 0.85 + rnd() * 0.3; pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.7, pos.getZ(i) * k); }
+  const tuft = (x, y, z, r, h) => {
+    const pos = [];
+    for (let k = 0; k < 26; k++) {
+      const a = rnd() * Math.PI * 2, lean = 0.35 + rnd() * 0.65, bh = h * (0.6 + rnd() * 0.4), w = 0.06;
+      const bx = x + Math.cos(a) * r * 0.25 * rnd(), bz = z + Math.sin(a) * r * 0.25 * rnd();
+      const tx = bx + Math.cos(a) * r * lean, tz = bz + Math.sin(a) * r * lean, px = -Math.sin(a) * w, pz = Math.cos(a) * w;
+      const A = [bx - px, y, bz - pz], B = [bx + px, y, bz + pz], Tp = [tx, y + bh, tz];
+      pos.push(...A, ...B, ...Tp, ...B, ...A, ...Tp);                 // both windings
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+    b.mesh(g, ['paint:#6f8a3e', 'paint:#7d9447', 'paint:#8c9a55'][Math.floor(rnd() * 3)]);
+  };
+  for (const [x, z, r, h] of [
+    [22.2, 46.2, 0.7, 2.2], [23.6, 45.8, 0.8, 2.6], [25.0, 46.3, 0.9, 2.8], [26.5, 45.7, 0.8, 2.4], [27.9, 46.3, 0.9, 3.0],
+    [29.3, 45.8, 0.8, 2.6], [30.6, 46.1, 0.9, 2.8], [31.6, 45.2, 0.7, 2.2],                       // in front of the lower landing
+    [33.5, 45.8, 0.8, 2.6], [35.5, 45.3, 0.8, 2.4], [36.3, 43.2, 0.7, 2.2],                       // front lobe, east end
+    [29.9, 44.0, 0.8, 2.6], [30.2, 42.5, 0.9, 3.0], [31.8, 43.0, 0.8, 2.4], [32.6, 41.3, 0.7, 2.0], [30.3, 40.6, 0.9, 2.8],
+    [31.6, 39.3, 0.8, 2.5], [30.0, 38.4, 0.8, 2.6], [32.8, 38.0, 0.7, 2.2], [30.4, 36.5, 0.7, 2.0], [31.8, 36.3, 0.6, 1.8],
+    [34.0, 40.5, 0.8, 2.6], [35.8, 39.0, 0.8, 2.4],                                               // east of the stoop
+    [34.5, 36.8, 0.7, 2.0], [36.3, 37.0, 0.8, 2.2], [38.2, 36.6, 0.7, 1.8], [40.1, 36.9, 0.8, 2.2], [42.0, 36.6, 0.7, 2.0], [43.6, 36.5, 0.6, 1.6],   // rear lobe
+  ]) tuft(x, SOIL, z, r, h);
+  tuft(20.5, 0, 46.5, 0.35, 1.2);                                  // west gap at grade between the lower step and the wall
+  for (const [x, z, r] of [[33.0, 43.3, 0.45], [35.5, 37.3, 0.4], [26.2, 45.5, 0.4]]) {   // a few low perennials
+    const g = new THREE.IcosahedronGeometry(r, 1), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const k = 0.85 + rnd() * 0.3; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.7, p.getZ(i) * k); }
     g.computeVertexNormals();
-    b.prim(g, rnd() < 0.5 ? 'paint:#4f6b33' : 'paint:#5f7d3c', x, H - 0.25 + r * 0.45, z, rnd() * 3);
+    b.prim(g, 'paint:#5f7d3c', x, SOIL + r * 0.4, z, rnd() * 3);
   }
 }
 // White vinyl privacy fence along a polyline: posts every 8', solid 6' panels between with a top rail.
