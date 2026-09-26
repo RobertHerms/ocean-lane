@@ -2225,7 +2225,7 @@ function doorKnob(lb, mat, x, y, z0, side) {
   // turned knob: short neck, then a flattened ball with a broad face
   const V = (r, h) => new THREE.Vector2(r, h);
   const lathe = new THREE.LatheGeometry([V(0.001, 0), V(0.04, 0), V(0.035, 0.07), V(0.05, 0.1), V(0.1, 0.13), V(0.115, 0.17), V(0.105, 0.21), V(0.07, 0.225), V(0.001, 0.228)], 32);
-  lathe.scale(1, 1, 0.74);                             // oval: squashed top to bottom once turned onto the door
+  lathe.scale(0.74, 1, 1);                             // oval: narrower side to side, so it stands taller than wide on the door
   lb.prim(lathe, mat, x, y, z0 + side * 0.02, 0, { rx: side * Math.PI / 2 });
 }
 function buildGarageDoor(s) {
