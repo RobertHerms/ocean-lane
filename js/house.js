@@ -823,18 +823,30 @@ function wallTrim(b, profile, y, pad, has) {
   }
 }
 
-// Light-switch plates beside each room door, on the latch side, on the side the door swings into.
+// Light-switch plates beside each room door, on the side the door swings into: on the latch side just past
+// the casing (a door with sidelights: past the whole unit's casing), failing that on the hinge side, and only
+// where the plate sits whole on a wall face at that height, clear of openings, casings and furniture.
 function switchPlates(b) {
   for (const d of L.DOORS) {
     if (/closet/i.test(d.name) || d.group !== d.id) continue;
-    const latch = d.hinge ? d.a0 - 0.29 - 0.3 : d.a1 + 0.29 + 0.3;
-    const w =L.WALLS.find(w2 => { const wi = wallInfo(w2); return (d.axis === 'x') === wi.alongX && Math.abs(wi.c - d.c) < 0.01 && latch > wi.a0 && latch < wi.a1; });
-    if (!w) continue;
-    const wi = wallInfo(w);
-    const s = d.swing, face = d.c + s * wi.t / 2, y = d.base + 4.0;
-    const o0 = face, o1 = face + s * 0.025;
-    if (d.axis === 'x') b.mbox(latch - 0.12, latch + 0.12, y - 0.19, y + 0.19, Math.min(o0, o1), Math.max(o0, o1), 'plate');
-    else b.mbox(Math.min(o0, o1), Math.max(o0, o1), y - 0.19, y + 0.19, latch - 0.12, latch + 0.12, 'plate');
+    const alongX = d.axis === 'x', y = d.base + 4.0;
+    const onLine = w2 => { const q = wallInfo(w2); return q.alongX === alongX && Math.abs(q.c - d.c) < 0.01; };
+    const op = L.WALLS.filter(onLine).flatMap(w2 => w2.ops).find(o => o.kind === 'door' && Math.abs(o.a0 - d.a0) < 0.01);
+    const [u0, u1] = op?.unit || [d.a0, d.a1], cw = op?.unit ? 0.33 : 0.29;
+    for (const a of d.hinge ? [u0 - cw - 0.3, u1 + cw + 0.3] : [u1 + cw + 0.3, u0 - cw - 0.3]) {
+      const w = L.WALLS.find(w2 => { const q = wallInfo(w2); return onLine(w2) && a - 0.12 >= q.a0 && a + 0.12 <= q.a1 && w2.y[0] <= y - 0.19 && w2.y[1] >= y + 0.19; });
+      if (!w) continue;
+      const clear = w.ops.every(o => {
+        const [o0, o1] = o.unit || [o.a0, o.a1], g = o.unit ? 0.33 : 0.29;
+        return a + 0.12 <= o0 - g || a - 0.12 >= o1 + g || y + 0.19 <= o.b0 - 0.4 || y - 0.19 >= o.b1 + 0.4;
+      });
+      const s = d.swing, face = d.c + s * wallInfo(w).t / 2, [fx, fz] = alongX ? [a, face + s * 0.15] : [face + s * 0.15, a];
+      if (!clear || b.boxes.some(k => fx > k.x0 && fx < k.x1 && fz > k.z0 && fz < k.z1 && y > k.y0 && y < k.y1)) continue;
+      const o0 = face, o1 = face + s * 0.025;
+      if (alongX) b.mbox(a - 0.12, a + 0.12, y - 0.19, y + 0.19, Math.min(o0, o1), Math.max(o0, o1), 'plate');
+      else b.mbox(Math.min(o0, o1), Math.max(o0, o1), y - 0.19, y + 0.19, a - 0.12, a + 0.12, 'plate');
+      break;
+    }
   }
 }
 
