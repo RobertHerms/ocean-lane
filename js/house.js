@@ -796,11 +796,23 @@ function stairs(b) {
       const zFront = upAtZ1 ? za : zb;
       const base = soffit ? Math.max(0, soffit(upAtZ1 ? zb : za)) : 0;
       b.box(x0, x1, base, top - 0.09, Math.min(za, zb), Math.max(za, zb), riserMat, { skip: ['ny', 'py'], dens: 6 });
-      const t0 = Math.min(za, zb, zFront + nose), t1 = Math.max(za, zb, zFront + nose);
+      // the nose's front face is only 0.09 tall: lightmapped, its texels land mostly inside the riser block
+      // below and bake black, so the lip is drawn probe-lit instead and the tread box has no front face
+      const front = upAtZ1 ? 'nz' : 'pz', sg = Math.sign(nose);
+      const carpet = f.finish === 'carpet';
+      const t0 = carpet ? Math.min(za, zb) : Math.min(za, zb, zFront + nose), t1 = carpet ? Math.max(za, zb) : Math.max(za, zb, zFront + nose);
       // open side: tread ends run 0.05 past the stringer and show their end grain
       const tx0 = x0 - (f.open < 0 ? 0.05 : 0), tx1 = x1 + (f.open > 0 ? 0.05 : 0);
-      const tSkip = ['ny', ...(f.open < 0 ? [] : ['nx']), ...(f.open > 0 ? [] : ['px'])];
+      const lip = f.finish === 'oak' || carpet;                 // (the exterior stone stoops keep a plain box)
+      const tSkip = ['ny', ...(lip ? [front] : []), ...(f.open < 0 ? [] : ['nx']), ...(f.open > 0 ? [] : ['px'])];
       b.box(tx0, tx1, top - 0.09, top, t0, t1, treadMat, { skip: tSkip, dens: 7, uv: f.finish === 'oak' ? 'face' : undefined, bevel: 0.035 });
+      if (carpet) {
+        // carpet wraps the nose: a rounded lip along the riser top
+        b.prim(new THREE.CylinderGeometry(0.05, 0.05, tx1 - tx0, 12), treadMat, (tx0 + tx1) / 2, top - 0.045, zFront + sg * 0.01, 0, { rz: Math.PI / 2 });
+      } else if (lip) {
+        const zn = zFront + nose;
+        b.mbox(tx0, tx1, top - 0.09, top, Math.min(zn, zn - sg * 0.02), Math.max(zn, zn - sg * 0.02), treadMat);
+      }
     }
     if (soffit) {
       let zLow = upAtZ1 ? z0 : z1;
