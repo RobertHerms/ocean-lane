@@ -17,6 +17,7 @@ const POSES = {
   kitchen_east: [31, 6, 10, -0.9, 0.15],
   kitchen_counters: [32, 6.2, 10, 1.0, -0.5],
   passthrough_dining: [37.5, 17.5, 10, 0.05, 0.1],
+  passthrough_trim: [41.6, 17.8, 10, 0.22, 0.08],
   passthrough_kitchen: [38, 5.5, 10, 3.1416, 0.05],
   fridge_doorway: [35, 16, 10, 0.75, 0.05],
   living_rail_end: [33, 27, 10, 1.87, -0.1],

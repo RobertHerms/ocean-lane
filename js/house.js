@@ -127,7 +127,7 @@ function walls(b, glass, sliders) {
         for (const op of covering) {
           if (Math.abs(op.b1 - s) < 1e-6) b.poly([wp(alongX, c, p, -t / 2, s), wp(alongX, c, q, -t / 2, s), wp(alongX, c, q, t / 2, s), wp(alongX, c, p, t / 2, s)],
             op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, mid, 0, 0)), s - 1), s - 1) : TRIM, { n: [0, -1, 0] });
-          if (Math.abs(op.b0 - e0) < 1e-6) b.poly([wp(alongX, c, p, -t / 2, e0), wp(alongX, c, q, -t / 2, e0), wp(alongX, c, q, t / 2, e0), wp(alongX, c, p, t / 2, e0)],
+          if (Math.abs(op.b0 - e0) < 1e-6 && !op.passThrough) b.poly([wp(alongX, c, p, -t / 2, e0), wp(alongX, c, q, -t / 2, e0), wp(alongX, c, q, t / 2, e0), wp(alongX, c, p, t / 2, e0)],
             TRIM, { n: [0, 1, 0] });
         }
         const lo = wp(alongX, c, pp, -t / 2, s), hi = wp(alongX, c, qq, t / 2, e), ce = Math.min(e, w.colTop ?? Infinity);
@@ -137,7 +137,7 @@ function walls(b, glass, sliders) {
     for (const op of w.ops) {
       if (op.kind === 'window') windowUnit(b, glass, w, op, sliders);
       else if (op.kind === 'door') { (op.unit ? unitCasing : casings)(b, w, op); if (op.bypass) bypassTrack(b, w, op); }
-      else if (op.passThrough) casings(b, w, op);
+      else if (op.passThrough) passThroughTrim(b, w, op);
       else if (op.garageDoor) garageTrim(b, w, op);
     }
   }
@@ -200,6 +200,45 @@ function unitCasing(b, w, op) {
     box(u0 - W - 0.06, u1 + W + 0.06, top + 0.47, top + 0.55, o0, side * (t / 2 + 0.13), TRIM, { skip: [wallSide], dens: 8 });   // bed mould
     box(u0 - W - 0.15, u1 + W + 0.15, top + 0.55, top + 0.69, o0, side * (t / 2 + 0.23), TRIM, { skip: [wallSide], dens: 8, bevel: 0.015 });  // cap
     for (const [m0, m1] of op.mullions || []) box(m0, m1, op.b0, top + 0.05, side * (t / 2 - 0.02), side * (t / 2 + 0.012), 'stain:#3b1f1a', { skip: [wallSide], dens: 6 });
+  }
+}
+// Kitchen / dining pass-through: one white stool through the wall with an apron under it on each face.
+// The face toward the room with crown (dining) gets a fluted casing with corner blocks, a frieze, bed
+// mould and a cap that stands out like a shelf (proportions as unitCasing); the kitchen face a flat casing.
+function passThroughTrim(b, w, op) {
+  const { alongX, t, c } = wallInfo(w);
+  const W = 0.33, sill = op.b0, top = op.b1, s0 = op.a0 - W, s1 = op.a1 + W;
+  const box = (a0, a1, y0, y1, d0, d1, o = {}) => {
+    const p0 = wp(alongX, c, a0, d0, y0), p1 = wp(alongX, c, a1, d1, y1);
+    b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y0, y1, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), TRIM, { dens: 8, ...o });
+  };
+  box(s0 - 0.1, s1 + 0.1, sill - 0.09, sill, -t / 2 - 0.15, t / 2 + 0.15, { bevel: 0.015 });            // stool
+  for (const side of [-1, 1]) {
+    const o0 = side * t / 2, d = p => side * (t / 2 + p);
+    const skip = [alongX ? (side > 0 ? 'nz' : 'pz') : (side > 0 ? 'nx' : 'px')];
+    const cas = (a0, a1, y0, y1, p) => casingBox(b, alongX, c, a0, a1, y0, y1, o0, d(p), side);
+    const probe = wp(alongX, c, (op.a0 + op.a1) / 2, side * (t / 2 + 0.4), sill + 1);
+    if (!roomAt(probe[0], probe[2], sill + 1)?.crown) {
+      cas(s0, op.a0, sill, top, 0.06); cas(op.a1, s1, sill, top, 0.06);
+      box(s0, s1, top, top + W, o0, d(0.06), { skip });
+      cas(s0, s1, sill - 0.09 - 0.25, sill - 0.09, 0.06);                                                  // apron
+      continue;
+    }
+    // fluted casing: a board 0.045 proud with ribs at 0.07 (bead, two ribs, outer band → three grooves)
+    cas(s0, op.a0, sill, top, 0.045); cas(op.a1, s1, sill, top, 0.045);
+    box(op.a0, op.a1, top, top + W, o0, d(0.045), { skip });
+    for (const [u0, u1] of [[0, 0.05], [0.09, 0.13], [0.17, 0.21], [0.25, W]]) {
+      cas(op.a0 - u1, op.a0 - u0, sill, top, 0.07); cas(op.a1 + u0, op.a1 + u1, sill, top, 0.07);
+      box(op.a0, op.a1, top + u0, top + u1, o0, d(0.07), { skip });
+    }
+    for (const [a0, a1] of [[s0, op.a0], [op.a1, s1]]) box(a0, a1, top, top + W, o0, d(0.075), { skip });   // corner blocks
+    const fTop = top + W + 0.3;
+    box(s0, s1, top + W, fTop, o0, d(0.08), { skip });                                                     // frieze
+    box(s0 - 0.06, s1 + 0.06, fTop - 0.08, fTop, o0, d(0.13), { skip });                                   // bed mould
+    box(s0 - 0.15, s1 + 0.15, fTop, fTop + 0.14, o0, d(0.25), { skip, bevel: 0.015 });                     // cap
+    cas(s0, s1, sill - 0.09 - 0.3, sill - 0.09, 0.06);                                                     // apron + bead
+    const yb = sill - 0.09 - 0.28;
+    beam(b, wp(alongX, c, s0, d(0.06), yb), wp(alongX, c, s1, d(0.06), yb), 0.045, 0, TRIM, { round: true });
   }
 }
 // Head track and floor guide for bypass closet doors.
@@ -503,7 +542,8 @@ function moldings(b) {
   for (const r of L.ROOMS) {
     if (['rear', 'stcl', 'rcl'].includes(r.id)) continue;
     const crownOnly = r.id === 'foyer';            // two-storey entry: crown at its ceiling only
-    const list = crownOnly ? [...r.crownRects.map(q => [q, 'crown']), ...r.baseRects.map(q => [q, 'base'])] : r.rects.map(q => [q, 'all']);
+    const list = crownOnly ? [...r.crownRects.map(q => [q, 'crown']), ...r.baseRects.map(q => [q, 'base'])]
+      : [...r.rects.map(q => [q, 'all']), ...(r.crownRects || []).map(q => [q, 'crown'])];   // extra crown runs (a header inside the room)
     for (const [[x0, x1, z0, z1], kind] of list) {
       const edges = [['x', z0, x0, x1, 1], ['x', z1, x0, x1, -1], ['z', x0, z0, z1, 1], ['z', x1, z0, z1, -1]];
       for (const [ax, c, e0, e1, s] of edges) {

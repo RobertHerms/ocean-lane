@@ -64,7 +64,7 @@ export const ROOMS = [
   room('hall', 'Hallway', [MAIN, MAIN_CEIL],
     [[10.7, 15.5, 12.3, 15.6], [15.5, 19.3, 12.3, 15.6], [19.3, 24.8, 11.7, 15.6], [10.7, 14.2, 15.6, 17.9]],
     'wood', PAINT.tan, { crown: true }),
-  room('din', 'Dining Room', [MAIN, MAIN_CEIL], [[28.8, 45, 9.7, 20], [24.8, 28.8, 11.7, 20]], 'wood', PAINT.tan, { crown: true, rug: [32.2, 41.8, 11.6, 18.6, 'rugDining'] }),
+  room('din', 'Dining Room', [MAIN, MAIN_CEIL], [[28.8, 45, 9.7, 20], [24.8, 28.8, 11.7, 20]], 'wood', PAINT.tan, { crown: true, crownRects: [[28.8, 32.2, 11.7, 20]], rug: [32.2, 41.8, 11.6, 18.6, 'rugDining'] }),
   room('liv', 'Living Room', [MAIN, MAIN_CEIL], [[28.8, 45, 20, 35]], 'wood', PAINT.tan, { crown: true, bay: [31.2, 43.5, 35, 36.2] }),
   room('br2', 'Bedroom 2', [MAIN, MAIN_CEIL], [[0, 10.7, 14.3, GARAGE_Z]], 'wood', PAINT.grey, { rug: [1.2, 9.6, 18.2, 26.4, 'rugGrey'] }),
   room('clB', 'Bedroom 2 closet', [MAIN, MAIN_CEIL], [[6.2, 10.7, 12.3, 14.3]], 'wood', PAINT.closet),
@@ -140,10 +140,12 @@ export const WALLS = [
   wz(19.3, 6.5, 12.3, HI),
   wx(12.3, 15.5, 19.3, HI),
   wx(11.7, 19.3, 28.8, HI, [door(21.1, 23.6, MAIN)]),      // runs on past the fridge enclosure so the hall wall is one plane
-  wz(28.8, 9.9, 11.7, HI),                                 // dining-room face of the fridge enclosure
+  wz(28.8, 9.9, 11.3, HI),                                 // dining-room face of the fridge enclosure (butts into the header)
   wz(26.6, 0, 11.7, HI),
-  wx(9.7, 32.2, 45, HI, [open(35, 41, MAIN + 3.3, MAIN + 7.0, { passThrough: true })]),
-  wz(32.2, 9.7, 11.6, HI),
+  wx(9.7, 32.2, 45, HI, [open(35.3, 42.8, MAIN + 2.65, MAIN + 6.67, { passThrough: true })]),
+  wz(32.2, 9.7, 11.3, HI),                                 // pier: its end shows flush with the header's south face
+  // header over the plain drywall-wrapped doorway from the dining room to the kitchen, beside the fridge
+  wx(11.7, 28.8, 32.2, [MAIN - 0.1, MAIN_CEIL], [open(29.0, 32.0, MAIN - 0.1, MAIN + 6.7)]),
   wx(15.6, 14.2, 24.8, HI, [door(19.1, 20.6, MAIN)]),
   wz(14.2, 15.6, 18.2, HI),
   wx(17.9, 10.7, 14.2, HI, [door(11.0, 13.8, MAIN)]),
@@ -386,7 +388,7 @@ export const ART = [
   art('z', 44.75, -1, 28.3, MAIN + 5.2, 4.2, 3.0, 'abstract', 'silver'),            // living room, over the couch (photo 1)
   art('x', 34.75, -1, 30.1, MAIN + 5.3, 1.1, 1.4, 'flower', 'white', true),         // beside the bow window (photos 1, 2)
   art('x', 11.9, 1, 25.5, MAIN + 5.0, 2.0, 2.6, 'bw', 'black', true),               // end of the hall (photos 5, 57)
-  art('x', 9.9, 1, 33.6, MAIN + 5.2, 1.1, 1.4, 'bw2', 'black', true),               // dining, beside the pass-through (photo 2)
+  art('x', 11.9, 1, 27.7, MAIN + 5.2, 1.1, 1.4, 'bw2', 'black', true),              // dining, left of the fridge doorway
   art('z', 44.75, -1, 11.1, MAIN + 5.3, 1.0, 1.25, 'bw3', 'black', true),           // dining, left of the window (photo 6)
   art('z', 44.75, -1, 12.45, MAIN + 5.3, 1.0, 1.25, 'bw4', 'black', true),
   art('z', 44.75, -1, 18.9, MAIN + 5.2, 1.3, 1.6, 'bw5', 'black', true),            // dining, right of the window (photo 2)
