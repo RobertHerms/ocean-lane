@@ -2806,6 +2806,11 @@ function planter(b) {
     g.computeVertexNormals();
     b.prim(g, 'paint:#5f7d3c', x, SOIL + r * 0.4, z, rnd() * 3);
   }
+  // black square planters down the east side of the stoop treads (positions estimated from the photos)
+  for (const [z, y] of [[40.0, 4.375], [41.0, 3.75], [43.0, 2.5], [44.2, 1.875]]) {
+    b.box(26.5, 28.1, y, y + 0.7, z - 0.45, z + 0.45, 'paint:#1e1e1e', { skip: ['ny'], dens: 3 });
+    b.collider(26.5, 28.1, y, y + 1.6, z - 0.45, z + 0.45);   // tall enough to reach BODY_LO (1.0) above the tread
+  }
 }
 // White vinyl privacy fence along a polyline: posts every 8', solid 6' panels between with a top rail.
 function fence(b, pts) {
