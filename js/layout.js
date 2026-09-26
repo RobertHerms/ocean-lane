@@ -375,20 +375,20 @@ export const FURNITURE = [
   // Dining & living
   { type: 'table', r: [34.3, 39.7, 13.4, 16.8], base: MAIN, wood: '#3e2518', chairs: 6, chair: 'dining' },
   // couches meet at the front outside corner with an end table (and table lamp) between them
-  { type: 'sofa', r: [42.0, 45, 24.4, 32.2], base: MAIN, face: 'w', fabric: '#c9bba4' },
-  { type: 'sofa', r: [34.2, 42.0, 31.7, 34.7], base: MAIN, face: 'n', fabric: '#c9bba4' },
-  { type: 'endTable', r: [42.3, 44.65, 32.4, 34.65], base: MAIN, wood: '#4a2e1f', lamp: true },
-  { type: 'coffeeTable', r: [36.8, 40.6, 27.0, 29.8], base: MAIN, wood: '#4a2e1f' },
-  { type: 'desk', r: [29.05, 31.45, 30.6, 34.6], base: MAIN, wood: '#5a3a26', face: 'e', monitors: 1, chair: true },
-  { type: 'rugRect', r: [34.5, 42.0, 23.8, 31.4], base: MAIN, color: '#b9ae9a' },
+  { type: 'sofa', r: [42.0, 45, 24.8, 32.6], base: MAIN, face: 'w', fabric: '#c9bba4' },
+  { type: 'sofa', r: [34.2, 42.0, 32.1, 35.1], base: MAIN, face: 'n', fabric: '#c9bba4' },
+  { type: 'endTable', r: [42.3, 44.65, 32.8, 35.05], base: MAIN, wood: '#4a2e1f', lamp: true },
+  { type: 'coffeeTable', r: [36.8, 40.6, 27.4, 30.2], base: MAIN, wood: '#4a2e1f' },
+  { type: 'desk', r: [29.05, 31.45, 31.0, 35.0], base: MAIN, wood: '#5a3a26', face: 'e', monitors: 1, chair: true },
+  { type: 'rugRect', r: [34.5, 42.0, 24.2, 31.8], base: MAIN, color: '#b9ae9a' },
   // Bedroom 2
-  { type: 'bed', r: [0.35, 3.95, 20.6, 27.65], base: MAIN, head: 's', wood: '#f4f2ec', size: 'twin' },
+  { type: 'bed', r: [0.35, 3.95, 22.7, 29.75], base: MAIN, head: 's', wood: '#f4f2ec', size: 'twin' },
   { type: 'dresser', r: [9.0, 10.5, 19.2, 24.5], base: MAIN, h: 3.0, wood: '#f4f2ec', face: 'w', mirror: true },   // east wall
   { type: 'makeupDesk', r: [1.9, 4.5, 14.5, 15.8], base: MAIN },                                                  // north wall
   // Bedroom 3 (nursery)
   { type: 'crib', r: [17.8, 20.6, 19.0, 23.6], base: MAIN },
-  { type: 'dresser', r: [15.0, 19.6, 26.2, 27.7], base: MAIN, h: 3.1, wood: '#f4f2ec', face: 'n' },
-  { type: 'glider', x: 12.6, z: 26.45, base: MAIN },
+  { type: 'dresser', r: [15.0, 19.6, 28.3, 29.8], base: MAIN, h: 3.1, wood: '#f4f2ec', face: 'n' },
+  { type: 'glider', x: 12.6, z: 28.55, base: MAIN },
   { type: 'changingTable', r: [10.9, 12.2, 22.4, 24.7], base: MAIN },                                            // west wall, leaves a way past the open door
   // Playroom
   { type: 'sectional', r: [36.2, 44.75, 21.0, 34.75], base: LOW, fabric: '#6e5f51', chaise: 5.6 },   // chaise lounge at the north end
@@ -420,20 +420,20 @@ export const FURNITURE = [
 // a: centre along the wall, y: centre height, w × h in feet, frame: black | white | silver | none, mat: white mat.
 const art = (wall, c, dir, a, y, w, h, style, frame = 'black', mat = false) => ({ wall, c, dir, a, y, w, h, style, frame, mat });
 export const ART = [
-  art('z', 44.75, -1, 28.3, MAIN + 5.2, 4.2, 3.0, 'abstract', 'silver'),            // living room, over the couch (photo 1)
-  art('x', 34.75, -1, 30.1, MAIN + 5.3, 1.1, 1.4, 'flower', 'white', true),         // beside the bow window (photos 1, 2)
+  art('z', 44.75, -1, 28.7, MAIN + 5.2, 4.2, 3.0, 'abstract', 'silver'),            // living room, over the couch (photo 1)
+  art('x', 35.15, -1, 30.1, MAIN + 5.3, 1.1, 1.4, 'flower', 'white', true),         // beside the bow window (photos 1, 2)
   art('x', 11.9, 1, 25.5, MAIN + 5.0, 2.0, 2.6, 'bw', 'black', true),               // end of the hall (photos 5, 57)
   art('x', 11.9, 1, 27.7, MAIN + 5.2, 1.1, 1.4, 'bw2', 'black', true),              // dining, left of the fridge doorway
   art('z', 44.75, -1, 11.1, MAIN + 5.3, 1.0, 1.25, 'bw3', 'black', true),           // dining, left of the window (photo 6)
   art('z', 44.75, -1, 12.45, MAIN + 5.3, 1.0, 1.25, 'bw4', 'black', true),
   art('z', 44.75, -1, 18.9, MAIN + 5.2, 1.3, 1.6, 'bw5', 'black', true),            // dining, right of the window (photo 2)
-  art('z', 0.25, 1, 26.5, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
-  art('z', 0.25, 1, 24.8, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
-  art('z', 0.25, 1, 22.6, MAIN + 5.1, 2.0, 2.0, 'dahlia', 'white'),                // (photo 30)
-  art('x', 27.65, -1, 2.15, MAIN + 5.3, 0.9, 1.8, 'dreamcatcher', 'none'),          // over the headboard (photos 27, 30)
+  art('z', 0.25, 1, 28.6, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
+  art('z', 0.25, 1, 26.9, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
+  art('z', 0.25, 1, 24.7, MAIN + 5.1, 2.0, 2.0, 'dahlia', 'white'),                // (photo 30)
+  art('x', 29.75, -1, 2.15, MAIN + 5.3, 0.9, 1.8, 'dreamcatcher', 'none'),          // over the headboard (photos 27, 30)
   art('z', 10.9, 1, 24.3, MAIN + 5.3, 1.1, 1.4, 'anchor', 'white', true),           // nursery, over the changing table (photos 34, 36)
   art('z', 10.9, 1, 22.8, MAIN + 5.3, 1.1, 1.4, 'whale', 'white', true),
-  art('x', 27.65, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
+  art('x', 29.75, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
   art('z', 20.6, -1, 21.3, MAIN + 5.4, 2.2, 1.8, 'nautical', 'none'),               // nursery decal over the crib (no name)
   art('z', 44.75, -1, (0.25 + (10.3 - 0.29)) / 2, LOW + 5.6, 4.5, 3.6, 'seascape', 'silver'),   // centred between the corner and the window trim              // playroom, the far side of the window (photos 39-41)
   art('z', 44.75, -1, (21.0 + 34.75) / 2, LOW + 5.6, 6.2, 4.2, 'sailboats', 'silver'),   // playroom, centred over the couch (photo 41)
@@ -448,10 +448,10 @@ export const ART = [
   art('z', 15.3, -1, 4.6, MAIN + 6.0, 0.9, 1.15, 'bw3', 'black', true),
   art('z', 15.3, -1, 6.0, MAIN + 6.0, 0.9, 1.15, 'bw4', 'black', true),
   // living room: a small gallery around the desk (photo 2)
-  art('z', 29.05, 1, 31.2, MAIN + 5.5, 1.0, 1.25, 'bw5', 'black', true),
-  art('z', 29.05, 1, 32.55, MAIN + 5.85, 1.1, 0.85, 'beach', 'white', true),
-  art('z', 29.05, 1, 32.55, MAIN + 4.95, 0.8, 0.65, 'bw2', 'black', true),
-  art('z', 29.05, 1, 33.9, MAIN + 5.5, 1.0, 1.25, 'skyline', 'black', true),
+  art('z', 29.05, 1, 31.6, MAIN + 5.5, 1.0, 1.25, 'bw5', 'black', true),
+  art('z', 29.05, 1, 32.95, MAIN + 5.85, 1.1, 0.85, 'beach', 'white', true),
+  art('z', 29.05, 1, 32.95, MAIN + 4.95, 0.8, 0.65, 'bw2', 'black', true),
+  art('z', 29.05, 1, 34.3, MAIN + 5.5, 1.0, 1.25, 'skyline', 'black', true),
 ];
 
 // Start just inside the front door, on the entry landing, facing the stairs.
