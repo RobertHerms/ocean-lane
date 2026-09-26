@@ -23,6 +23,8 @@ const POSES = {
   living_rail_end: [33, 27, 10, 1.87, -0.1],
   rear_rail: [40, 3, 10, 0.2, -0.2],
   front_stair_foot: [24, 16, 0, 3.1416, 0.25],
+  front_newel: [22.6, 14.6, 0, -2.6, -0.05],
+  front_stair_top: [27.5, 17.3, 10, 2.39, -0.35],
   living_lights: [36, 21, 10, 3.1416, 0.45],
   bath1_vanity: [23.5, 9, 10, 1.5708, 0.3],
   stair_closet: [26.8, 20.2, 0, 3.1416, 0.1],

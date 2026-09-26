@@ -755,6 +755,36 @@ function beam(b, p0, p1, w, h, mat, o = {}) {
   b.mesh(g, mat, o);
 }
 
+// Box newel (0.46 square): plain plinth with a cap moulding, a shaft with a recessed panel framed on all
+// four faces, a collar at the rail, a plain upper block, a cap plate and a cushion block on top.
+function newelPost(b, x, z, y0, railTop) {
+  const sq = (h, ya, yb, o) => b.box(x - h, x + h, ya, yb, z - h, z + h, TRIM, { dens: 8, ...o });
+  const mould = (h, ya, yb) => b.mbox(x - h, x + h, ya, yb, z - h, z + h, TRIM);
+  sq(0.23, y0, y0 + 0.9, { skip: ['ny', 'py'] });                                    // plinth
+  mould(0.245, y0 + 0.9, y0 + 0.925); mould(0.26, y0 + 0.925, y0 + 0.95);             // plinth cap
+  const s0 = y0 + 0.95, s1 = railTop - 0.05;
+  sq(0.215, s0, railTop, { skip: ['ny', 'py'] });                                    // core: the panels, 0.015 back
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {                             // corner stiles
+    const cx = x + sx * 0.1875, cz = z + sz * 0.1875;
+    b.box(cx - 0.0425, cx + 0.0425, s0, s1, cz - 0.0425, cz + 0.0425, TRIM, { skip: ['ny', 'py'], dens: 8 });
+  }
+  for (const [ya, yb] of [[s0, s0 + 0.07], [s1 - 0.07, s1]]) {                        // top and bottom rails
+    b.mbox(x - 0.23, x + 0.23, ya, yb, z - 0.145, z + 0.145, TRIM);
+    b.mbox(x - 0.145, x + 0.145, ya, yb, z - 0.23, z + 0.23, TRIM);
+  }
+  mould(0.26, railTop, railTop + 0.07);                                               // collar
+  sq(0.23, railTop + 0.07, railTop + 0.47, { skip: ['ny', 'py'] });                  // upper block
+  b.box(x - 0.31, x + 0.31, railTop + 0.47, railTop + 0.54, z - 0.31, z + 0.31, TRIM, { dens: 8, bevel: 0.02 });   // cap plate
+  const sh = new THREE.Shape();                                                       // cushion: 0.38 square, rounded
+  sh.moveTo(-0.12, -0.12); sh.lineTo(0.12, -0.12); sh.lineTo(0.12, 0.12); sh.lineTo(-0.12, 0.12); sh.lineTo(-0.12, -0.12);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.07, bevelSegments: 4 });
+  g.rotateX(-Math.PI / 2);
+  g.computeBoundingBox();
+  g.translate(0, -g.boundingBox.min.y, 0);
+  b.prim(g, TRIM, x, railTop + 0.54, z);
+  b.collider(x - 0.23, x + 0.23, y0, railTop + 0.72, z - 0.23, z + 0.23);
+}
+
 function railings(b) {
   for (const r of L.RAILINGS) {
     const len = Math.hypot(r.x1 - r.x0, r.z1 - r.z0);
@@ -783,10 +813,7 @@ function railings(b) {
     }
     for (const nt of r.newels) {
       const p = at(nt);
-      const baseY = r.newelBase ? r.newelBase(nt) : sloped ? p[1] - 0.12 : r.base(nt);
-      const s = 0.23;
-      b.box(p[0] - s, p[0] + s, baseY, p[1] + r.h + 0.35, p[2] - s, p[2] + s, TRIM, { skip: ['ny'], dens: 8, bevel: 0.02 });
-      b.box(p[0] - s - 0.05, p[0] + s + 0.05, p[1] + r.h + 0.35, p[1] + r.h + 0.5, p[2] - s - 0.05, p[2] + s + 0.05, TRIM, { dens: 8, bevel: 0.03 });
+      newelPost(b, p[0], p[2], r.newelBase ? r.newelBase(nt) : sloped ? p[1] - 0.12 : r.base(nt), p[1] + r.h + 0.1);
     }
     b.collider(Math.min(r.x0, r.x1) - 0.14, Math.max(r.x0, r.x1) + 0.14, Math.min(r.base(0), r.base(1)), Math.max(r.base(0), r.base(1)) + r.h,
       Math.min(r.z0, r.z1) - 0.14, Math.max(r.z0, r.z1) + 0.14);

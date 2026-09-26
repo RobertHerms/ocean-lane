@@ -179,13 +179,13 @@ export const KNEEWALLS = [
 
 // Balustrades: white square balusters, stained oak rail. base(t) = walking height along the run.
 export const RAILINGS = [
-  { x0: 28.8, z0: 20, x1: 28.8, z1: 30, base: () => MAIN, h: 3.0, newels: [0, 1], shoe: 'oak' },             // living room / stairwell (photo 57)
+  { x0: 28.8, z0: 20, x1: 28.8, z1: 29.52, base: () => MAIN, h: 3.0, newels: [0, 1], shoe: 'oak' },          // living room / stairwell (photo 57): end post against the front wall
   { x0: 24.8, z0: FU.z0, x1: 24.8, z1: FU.z1, base: t => MAIN - t * (MAIN - FRONT) + (MAIN - FRONT) / 5, h: 2.75,  // front up-flight (nosing line)
-    newels: [0.05, 1], newelBase: t => (t < 0.5 ? MAIN : FRONT), flight: 'frontUp' },
+    newels: [0.105, 1], newelBase: t => (t < 0.5 ? MAIN : FRONT), flight: 'frontUp' },                        // top post clear of the wall corner
   { x0: 24.8, z0: FU.z1, x1: 24.8, z1: FD.z1, base: () => FRONT, h: 3.0, newels: [1] },                        // landing edge over the bottom flight
   { x0: 24.8, z0: FD.z0, x1: 24.8, z1: 19.5, base: t => LOW + (FRONT - LOW) * (t * (19.5 - FD.z0) / (FD.z1 - FD.z0)) + (FRONT - LOW) / 11,
     h: 2.75, newels: [0], newelBase: () => LOW, flight: 'frontDown' },                                          // foot of the bottom flight in the lower hall
-  { x0: 38.9, z0: 0, x1: 42.2, z1: 0, base: () => MAIN, h: 3.0, newels: [1] },                                 // kitchen / rear stairs
+  { x0: 38.9, z0: 0, x1: 41.77, z1: 0, base: () => MAIN, h: 3.0, newels: [0, 1] },                             // kitchen / rear stairs: corner post where the up-flight rail arrives, end post against the wall
   { x0: 38.9, z0: -4.4, x1: 38.9, z1: 0, base: t => MID + t * (MAIN - MID) + (MAIN - MID) / 8 + 0.12, h: 2.65, // rear up-flight
     newels: [0], newelBase: () => MID },
 ];
