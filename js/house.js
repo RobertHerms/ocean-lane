@@ -1000,7 +1000,7 @@ function stairCloset(b) {
 
 // =============================================================== kitchen ===
 // Cream flat-panel cabinets with butter-yellow loop pulls, cream solid-surface tops, a curved (concave)
-// north-west corner and a rounded end at the stair; the uppers run up to a painted soffit, and a boxed
+// north-west corner and a rounded end at the stair; the uppers run up to a soffit in the cabinet finish, and a boxed
 // bulkhead sits over the sink window. Stainless appliances (photos 3, 4, 37).
 function roundedEnd(len, depth, radius) {
   const s = new THREE.Shape();
@@ -1021,7 +1021,7 @@ const arcPts = (cx, cz, r, a0, a1, n = 12) => Array.from({ length: n + 1 }, (_, 
   return [cx + r * Math.cos(a), cz + r * Math.sin(a)];
 });
 function kitchen(b) {
-  const F = L.MAIN, C = L.MAIN_CEIL, CAB = 'cabinet', TOP = 'counter', KICK = 'paint:#3a3632', SOF = 'paint:#e6dcc4';
+  const F = L.MAIN, C = L.MAIN_CEIL, CAB = 'cabinet', TOP = 'counter', KICK = 'paint:#3a3632', SOF = CAB;   // soffit + bulkhead: same finish as the cabinets
   const baseH = 2.95, topT = 0.125, depth = 2.05, kick = 0.35, cTop = F + baseH;
   const W = 26.6 + 0.2;               // west wall face
   const N = 0.25;                     // north wall face
