@@ -845,6 +845,26 @@ function fixtures(b, lamps) {
       b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, x, y - 0.015, z);
       b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', x, y - 0.034, z, 0, { bake: false });
       lamps.push({ x, y: y - 0.06, z, r: 0.22, kind: 'down', I: f.I || 5.5 });
+    } else if (f.kind === 'wellcan') {
+      // can in the skylight well's south face (z = face), facing north
+      b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, x, y, z - 0.015, 0, { rx: Math.PI / 2 });
+      b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', x, y, z - 0.034, 0, { rx: Math.PI / 2, bake: false });
+      lamps.push({ x, y, z: z - 0.2, r: 0.2, kind: 'omni', I: 4 });
+    } else if (f.kind === 'fan') {
+      // bath exhaust fan: white grille with dark louvre slots, no light
+      b.mbox(x - 0.45, x + 0.45, y - 0.04, y, z - 0.35, z + 0.35, 'plate');
+      for (let i = 0; i < 12; i++) { const sz = z - 0.275 + i * 0.05; b.mbox(x - 0.36, x + 0.36, y - 0.046, y - 0.039, sz - 0.0125, sz + 0.0125, 'paint:#2b2a28'); }
+    } else if (f.kind === 'track') {
+      // white ceiling track; cylinder spot heads on short stems, tilted 45 degrees down toward -z
+      b.mbox(f.x0, f.x1, y - 0.06, y, z - 0.05, z + 0.05, 'plate');
+      const dy = -Math.SQRT1_2, dz = -Math.SQRT1_2, hy = y - 0.4;
+      for (const hx of f.heads) {
+        b.prim(new THREE.CylinderGeometry(0.025, 0.025, 0.26, 8), 'plate', hx, y - 0.19, z);
+        b.prim(new THREE.SphereGeometry(0.05, 10, 8), 'plate', hx, y - 0.32, z);
+        b.prim(new THREE.CylinderGeometry(0.14, 0.14, 0.45, 20), 'plate', hx, hy, z, 0, { rx: -3 * Math.PI / 4 });
+        b.prim(new THREE.CylinderGeometry(0.11, 0.11, 0.01, 20), 'lampGlow', hx, hy + dy * 0.23, z + dz * 0.23, 0, { rx: -3 * Math.PI / 4, bake: false });
+        lamps.push({ x: hx, y: hy + dy * 0.53, z: z + dz * 0.53, r: 0.12, kind: 'omni', I: 6 });
+      }
     } else if (f.kind === 'dome') {
       b.prim(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 32), 'bronze', x, y - 0.025, z);
       const g = new THREE.SphereGeometry(0.58, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);

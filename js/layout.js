@@ -282,7 +282,8 @@ export const ROOF = [[0, 45, 0, GARAGE_Z], [20.8, 45, GARAGE_Z, 35], [35, 45, -8
 export const SKYLIGHTS = [[21.7, 24.1, 7.8, 10.2], [36.6, 40.4, -6.8, -4.9]];   // hall bath (in front of the vanity), rear stairs
 
 // ------------------------------------------------------------- lighting ----
-// Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop
+// Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop | semiflush |
+// wellcan (can in a skylight well's side face) | track (ceiling track with spot heads) | fan (exhaust grille, no light)
 const can = (x, z, y, I) => ({ kind: 'can', x, z, y, I });
 export const FIXTURES = [
   // playroom recessed lights: two rows of six down the long room; lower halls
@@ -299,12 +300,19 @@ export const FIXTURES = [
   // main level
   { kind: 'semiflush', x: 18.5, z: 14, y: MAIN_CEIL },   // one light in the upstairs hall (photos 5, 31)
   { kind: 'chandelier', x: 37, z: 15.1, y: MAIN_CEIL, drop: 2.9 },
-  can(31, 4.8, MAIN_CEIL), can(35.5, 4.8, MAIN_CEIL), can(40.5, 4.8, MAIN_CEIL), can(31, 8, MAIN_CEIL),
-  can(32.5, 23.5, MAIN_CEIL), can(41, 23.5, MAIN_CEIL), can(32.5, 31.5, MAIN_CEIL), can(41, 31.5, MAIN_CEIL),
+  // kitchen: over the curved corner, the range, the sink, the middle, the breakfast table by the east window
+  ...[[29.9, 3.4], [30.2, 6.3], [33.0, 3.6], [36.8, 3.2], [36.8, 7.0], [42.6, 3.9], [42.6, 6.1]].map(([x, z]) => can(x, z, MAIN_CEIL)),
+  // living room: six cans on a perimeter pattern
+  ...[31.8, 42.0].flatMap(x => [22.6, 27.5, 32.4].map(z => can(x, z, MAIN_CEIL))),
   can(4, 3.5, MAIN_CEIL), can(11, 3.5, MAIN_CEIL), can(4, 9, MAIN_CEIL), can(11, 9, MAIN_CEIL),
   can(3, 18.5, MAIN_CEIL), can(7.7, 18.5, MAIN_CEIL), can(3, 24.5, MAIN_CEIL), can(7.7, 24.5, MAIN_CEIL),
   can(13.6, 21, MAIN_CEIL), can(18, 21, MAIN_CEIL), can(13.6, 25.5, MAIN_CEIL), can(18, 25.5, MAIN_CEIL),
-  can(23.5, 5, MAIN_CEIL), can(25.2, 9.0, MAIN_CEIL),
+  // hall bath: over the tub, two over the vanity, one in the skylight well's south face, exhaust fan
+  can(23.9, 1.5, MAIN_CEIL), can(20.4, 8.1, MAIN_CEIL), can(20.4, 10.3, MAIN_CEIL),
+  { kind: 'wellcan', x: 22.9, z: SKYLIGHTS[0][3], y: MAIN_CEIL + 1 },
+  { kind: 'fan', x: 23.0, z: 5.6, y: MAIN_CEIL },
+  // back stairs: a track with two spots under the kitchen / rear-stair header, aimed down the stairs
+  { kind: 'track', x0: 37, x1: 41, z: -0.2, y: annexCeil(-0.2), heads: [37.8, 40.2] },
   can(18.3, 2.8, MAIN_CEIL), can(17.2, 6.9, MAIN_CEIL),
   { kind: 'dome', x: 17.4, z: 10.4, y: MAIN_CEIL },
 ];
