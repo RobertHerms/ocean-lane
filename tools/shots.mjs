@@ -42,6 +42,8 @@ const POSES = {
   bath1_well: [22.9, 7.2, 10, 3.1416, 0.75],
   bath1_ceiling: [23.2, 10.6, 10, 0, 0.5],
   rear_track: [39, 4.5, 10, 0, 0.3],
+  rear_down_flight: [40.2, 1.4, 0, -0.08, -0.6],
+  rear_up_top: [37, 0.9, 10, 0, -0.6],
   stair_closet: [26.8, 20.2, 0, 3.1416, 0.1],
   stair_closet_west: [28.0, 23.4, 0, 1.5708, -0.6],
   stair_closet_back: [26.6, 28.2, 0, 0, 0.15],
