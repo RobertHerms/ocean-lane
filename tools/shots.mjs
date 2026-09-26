@@ -25,6 +25,8 @@ const POSES = {
   dining_chair_back: [40.2, 19.2, 10, 0.76, -0.5],
   dining_chair_side: [34.2, 18.6, 10, 0.1, -0.6],
   living_rail_end: [33, 27, 10, 1.87, -0.1],
+  foyer_rail_base: [26.2, 20.1, 9.93, 3.56, -0.6],
+  rear_wall_top: [40, -5.6, 5, 3.1416, 0.3],
   rear_rail: [40, 3, 10, 0.2, -0.2],
   front_stair_foot: [24, 16, 0, 3.1416, 0.25],
   front_newel: [22.6, 14.6, 0, -2.6, -0.05],

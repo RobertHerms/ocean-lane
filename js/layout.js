@@ -125,7 +125,7 @@ export const WALLS = [
   // ---- rear stair annex ----
   // under the rear up-flight the wall only blocks below the stair (colTop), so the top steps stay walkable
   wx(0, 35, 38.9, LO, [door(35.4, 37.9, LOW)], { t: EXT_T, colTop: MAIN - 1.3 }),
-  wx(0, 38.9, 45, LO, [open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header)
+  wx(0, 38.9, 45, [0, MAIN], [open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header); the kitchen floor runs over its top
   wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)], { t: EXT_T }),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
   wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3 + WALL_T / 2)]),                 // up to the pantry's (higher) ceiling
@@ -159,7 +159,7 @@ export const WALLS = [
   wz(24.8, 15.6, 20, HI, [door(16.1, 18.6, MAIN)]),          // coat closet: door faces the dining room
   wx(20, 20.8, 24.8, HI),                                  // ...and a solid wall faces the stairs
   wz(20.8, 20, GARAGE_Z, ALL, [], { yCuts: [FRONT] }),     // stairwell west (garage / bedroom 3 side); closet below the landing
-  wz(28.8, 19.5, 30, [0, MAIN + 0.1], [], { t: EXT_T, yCuts: [FRONT] }),   // stairwell east below the living-room railing (flush with the front wall)
+  wz(28.8, 19.5, 30, [0, MAIN], [], { t: EXT_T, yCuts: [FRONT] }),   // stairwell east below the living-room railing (flush with the front wall); the living-room floor runs over its top
   // ---- lower level interior (1st floor plan) ----
   wz(18.3, 0, 14.6, LO),
   wx(4.5, 18.3, 25.2, LO),

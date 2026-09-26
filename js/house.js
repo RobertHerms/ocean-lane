@@ -151,11 +151,50 @@ function walls(b, glass, sliders) {
         if (ce > s) b.collider(Math.min(lo[0], hi[0]), Math.max(lo[0], hi[0]), s, ce, Math.min(lo[2], hi[2]), Math.max(lo[2], hi[2]));
       }
     }
+    capTop(b, w);
     for (const op of w.ops) {
       if (op.kind === 'window') windowUnit(b, glass, w, op, sliders);
       else if (op.kind === 'door') { (op.unit ? unitCasing : casings)(b, w, op); if (op.bypass) bypassTrack(b, w, op); }
       else if (op.passThrough) passThroughTrim(b, w, op);
       else if (op.garageDoor) garageTrim(b, w, op);
+    }
+  }
+}
+// A wall that stops below the ceilings on both sides (a half wall under a railing) gets a top face over
+// whatever of its footprint no floor, tread, solid or taller wall already covers. Where its top is the
+// floor level of the room on one side, that room's floor runs on over it (same material and lightmap chart)
+// and the edge on the other (stairwell) side gets an oak nosing.
+function capTop(b, w) {
+  if (w.slope) return;
+  const { alongX, t, c, a0, a1 } = wallInfo(w), y = w.y[1];
+  const rs = [-1, 1].map(s => {
+    const p = wp(alongX, c, (a0 + a1) / 2, s * (t / 2 + 0.3), y + 0.05), r = roomAt(p[0], p[2], y + 0.05);
+    return r && y + 0.05 < (r.slope ? L.annexCeil(p[2]) : r.h[1]) ? r : null;
+  });
+  if (!rs[0] || !rs[1]) return;
+  // the wall's footprint at its top: its length (to the joint or half a thickness past a free end) less the
+  // openings that reach the top
+  const lengthRects = (w2, yy) => {
+    const q = wallInfo(w2);
+    const e0 = joinedAt(w2, q.a0, -1, yy - 0.1, yy) ? q.a0 : q.a0 - q.t / 2, e1 = joinedAt(w2, q.a1, 1, yy - 0.1, yy) ? q.a1 : q.a1 + q.t / 2;
+    let segs = [[e0, e1]];
+    for (const op of w2.ops) if (op.b0 < yy && op.b1 >= yy - 1e-6) segs = subtract(segs, op.a0, op.a1);
+    return segs.map(([s0, s1]) => (q.alongX ? [s0, s1, q.c - q.t / 2, q.c + q.t / 2] : [q.c - q.t / 2, q.c + q.t / 2, s0, s1]));
+  };
+  const cover = [...floorRectsAt(y), ...L.SOLIDS.filter(s => Math.abs(s.b[3] - y) < 1e-6).map(s => [s.b[0], s.b[1], s.b[4], s.b[5]]),
+    ...L.WALLS.filter(w2 => w2 !== w && w2.y[0] <= y + 1e-6 && w2.y[1] > y + 0.05).flatMap(w2 => lengthRects(w2, y + 0.05))];
+  const fi = rs.findIndex(r => Math.abs(r.h[0] - y) < 1e-6), fr = rs[fi];
+  const mat = fr ? fr.floor : TRIM, o = fr ? { chart: 'floor' + y } : { dens: 8 };
+  for (const rect of lengthRects(w, y - 0.05)) {
+    for (const [x0, x1, z0, z1] of rectMinus(rect, cover)) {
+      if (x1 - x0 < 1e-3 || z1 - z0 < 1e-3) continue;
+      b.poly([[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]], mat, { n: [0, 1, 0], ...o });
+      if (!fr) continue;
+      const s = fi === 0 ? 1 : -1, face = c + s * t / 2, e0 = alongX ? x0 : z0, e1 = alongX ? x1 : z1;   // nosing on the other side
+      if (Math.abs((alongX ? (s > 0 ? z1 : z0) : (s > 0 ? x1 : x0)) - face) > 1e-3) continue;
+      const p0 = wp(alongX, c, e0, s * t / 2, y), p1 = wp(alongX, c, e1, s * (t / 2 + 0.07), y);   // (0.07: clear of a 0.06 skirt board)
+      b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y - 0.12, y, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), 'oak',
+        { skip: [alongX ? (s > 0 ? 'nz' : 'pz') : (s > 0 ? 'nx' : 'px')], dens: 8, bevel: 0.02 });
     }
   }
 }
@@ -516,7 +555,6 @@ function floorsAndCeilings(b, glass) {
   b.poly([[20.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 20], [20.8, L.LOW_CEIL, 20]], 'ceiling', { n: [0, -1, 0] });
   // exposed edges of the main floor at the stair openings
   b.poly([[20.8, L.LOW_CEIL - 0.05, 20], [24.8, L.LOW_CEIL - 0.05, 20], [24.8, L.MAIN, 20], [20.8, L.MAIN, 20]], 'paint:' + L.PAINT.tan, { n: [0, 0, 1] });
-  b.poly([[38.9, L.LOW_CEIL, 0], [42.2, L.LOW_CEIL, 0], [42.2, L.MAIN, 0], [38.9, L.MAIN, 0]], 'paint:' + L.PAINT.tan, { n: [0, 0, -1] });
   // solids: no top face where a floor at that height already covers it (the carpeted MID landings, the pantry
   // floor): the paint would be coplanar with the floor and z-fight with it
   for (const s of L.SOLIDS) {
