@@ -75,7 +75,7 @@ export const ROOMS = [
   room('upcl', 'Coat closet', [MAIN, MAIN_CEIL], [[20.8, 24.8, 15.6, 20]], 'wood', PAINT.closet),
   // storage closet under the front stairs: under the top flight and on under the entry landing to the front
   // wall (listed before the stairwell so the space below the landing reads as the closet)
-  room('stcl', 'Closet', [LOW, FRONT], [[24.8, 28.55, 19.5, 29.75]], 'tileGrey', PAINT.storage),
+  room('stcl', 'Closet', [LOW, FRONT], [[24.8, 28.55, 19.5, 29.75], [20.8, 24.8, FD.z1, 29.75]], 'tileGrey', PAINT.storage),
   // two-storey stairwells
   room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileEntry', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
     baseY: FRONT, baseRects: [[20.8, 24.8, FD.z1, 30], [24.8, 28.8, FU.z1, 30]] }),
@@ -109,7 +109,7 @@ export const WALLS = [
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
   wx(GARAGE_Z, 0, 20.75, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
     hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
-  wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T }),      // same thickness as the foyer wall it continues
+  wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T, yCuts: [FRONT] }),      // same thickness as the foyer wall it continues
   wx(30, 20.85, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
     win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], { ...EXT, yCuts: [FRONT] }),   // yCuts: split the faces there (closet below the landing)
   wz(28.8, 30, 35, ALL, [], EXT),
@@ -157,7 +157,7 @@ export const WALLS = [
   wz(20.8, 15.6, 20, HI),
   wz(24.8, 15.6, 20, HI, [door(16.1, 18.6, MAIN)]),          // coat closet: door faces the dining room
   wx(20, 20.8, 24.8, HI),                                  // ...and a solid wall faces the stairs
-  wz(20.8, 20, GARAGE_Z, ALL),                             // stairwell west (garage / bedroom 3 side)
+  wz(20.8, 20, GARAGE_Z, ALL, [], { yCuts: [FRONT] }),     // stairwell west (garage / bedroom 3 side); closet below the landing
   wz(28.8, 19.5, 30, [0, MAIN + 0.1], [], { t: EXT_T, yCuts: [FRONT] }),   // stairwell east below the living-room railing (flush with the front wall)
   // ---- lower level interior (1st floor plan) ----
   wz(18.3, 0, 14.6, LO),
@@ -177,7 +177,7 @@ export const WALLS = [
 // Solid half-walls beside stair flights (top follows the higher flight), with a balustrade on top.
 export const KNEEWALLS = [
   { x: 24.8, z0: 19.5, z1: FD.z1, flight: 'frontUp',       // carries on beside the landing to the top of the bottom flight;
-    hole: { z0: 20.5, z1: 26, slope: (FRONT - LOW) / (FD.z1 - FD.z0) } },   // a triangular opening at its foot, top edge with the bottom flight
+    hole: { z0: 20.5, z1: FD.z1, under: 'frontDown' } },   // full height 1 ft past the closet door, then open under the bottom flight
   { x: 38.9, z0: -4.4, z1: 0, flight: 'rearUp', closed: true },
 ];
 
@@ -270,7 +270,6 @@ export const FLIGHTS = [
 ];
 // Solid masses: under landings and closed-off space (b: x0,x1,y0,y1,z0,z1)
 export const SOLIDS = [
-  { b: [20.8, 25.0, 0, FRONT, FD.z1, 30], paint: PAINT.storage },       // under the landing west of the stair closet
   { b: [35, 42.2, 0, MID, -8, -4.4], paint: PAINT.tan },
   { b: [42.2, 45, 0, MID, -8, -4.4], paint: PAINT.tan },
   { b: [42.0, 45, 0, MID, -4.4, -3.3], paint: PAINT.tan },

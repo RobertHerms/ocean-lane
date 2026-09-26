@@ -496,7 +496,7 @@ function floorsAndCeilings(b, glass) {
     b.poly(pts, 'tileEntry', { n: [0, 1, 0], uv: entryUV(pts) });
   }
   b.poly([[35, L.MID, -8], [42.2, L.MID, -8], [42.2, L.MID, -4.4], [35, L.MID, -4.4]], 'carpetBeige', { n: [0, 1, 0] });
-  b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, L.FD.z1], [20.8, L.LOW, L.FD.z1]], 'tileGrey', { n: [0, 1, 0] });   // under the bottom flight
+  b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, 29.75], [20.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // under the bottom flight and the landing
   b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, 29.75], [24.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // stair closet
   b.poly([[20.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 20], [20.8, L.LOW_CEIL, 20]], 'ceiling', { n: [0, -1, 0] });
   // exposed edges of the main floor at the stair openings
@@ -887,8 +887,10 @@ function stairs(b) {
     if (k.z0 < fl.r[2] - 1e-6) segs.push({ za: k.z0, zb: fl.r[2], top: Math.abs(fl.r[2] - hiZ) < 1e-6 ? hi : lo, cap: true });
     if (k.z1 > fl.r[3] + 1e-6) segs.push({ za: fl.r[3], zb: k.z1, top: Math.abs(fl.r[3] - hiZ) < 1e-6 ? hi : lo, cap: true });
     const T = OPEN_W, h = k.hole;
-    // a triangular opening at the wall's foot: its top edge rises from h.z0 at the floor and drops back at h.z1
-    const bot = h ? (g, z) => (g.za >= h.z0 - 1e-6 && g.zb <= h.z1 + 1e-6 ? (z - h.z0) * h.slope : 0) : () => 0;
+    // an opening under the wall from h.z0 on: its top edge is the underside of the flight next to it
+    // (h.under), and it doesn't close again; only the part above that flight's soffit stays
+    const hb = h ? z => Math.max(0, SOFFITS[h.under](z)) : null;
+    const bot = h ? (g, z) => (g.za >= h.z0 - 1e-6 && g.zb <= h.z1 + 1e-6 ? hb(z) : 0) : () => 0;
     if (h) for (const zc of [h.z0, h.z1]) segs = segs.flatMap(g => (zc > g.za + 1e-6 && zc < g.zb - 1e-6 ? [{ ...g, zb: zc }, { ...g, za: zc }] : [g]));
     for (const s of [-1, 1]) {
       const x = k.x + s * T;
@@ -905,9 +907,12 @@ function stairs(b) {
       }
     }
     if (h) {
-      const yt = (h.z1 - h.z0) * h.slope, mat = paintFor(roomAt(k.x + 0.5, (h.z0 + h.z1) / 2, 1), 1);
-      b.poly([[k.x - T, 0, h.z0], [k.x + T, 0, h.z0], [k.x + T, yt, h.z1], [k.x - T, yt, h.z1]], mat, { n: [0, -1, h.slope] });
-      b.poly([[k.x - T, 0, h.z1], [k.x + T, 0, h.z1], [k.x + T, yt, h.z1], [k.x - T, yt, h.z1]], mat, { n: [0, 0, -1] });
+      // the opening's jamb at h.z0, the wall's sloped underside along the flight, and the wall's end at k.z1
+      const mat = paintFor(roomAt(k.x + 0.5, (h.z0 + h.z1) / 2, 1), 1), y0 = hb(h.z0), y1 = hb(h.z1);
+      const k0 = (y1 - y0) / (h.z1 - h.z0), endTop = segs.find(g => Math.abs(g.zb - k.z1) < 1e-6)?.top ?? y1;
+      if (y0 > 1e-3) b.poly([[k.x - T, 0, h.z0], [k.x + T, 0, h.z0], [k.x + T, y0, h.z0], [k.x - T, y0, h.z0]], mat, { n: [0, 0, 1] });
+      b.poly([[k.x - T, y0, h.z0], [k.x + T, y0, h.z0], [k.x + T, y1, h.z1], [k.x - T, y1, h.z1]], mat, { n: [0, -1, k0] });
+      if (h.z1 >= k.z1 - 1e-6) b.poly([[k.x - T, y1, k.z1], [k.x + T, y1, k.z1], [k.x + T, endTop, k.z1], [k.x - T, endTop, k.z1]], mat, { n: [0, 0, 1] });
     }
     for (const g of segs) {
       // cap, except where a floor or a tread at the same height already runs over the wall (coplanar)
@@ -916,7 +921,7 @@ function stairs(b) {
           if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) b.poly([[a0, g.top, c0], [a1, g.top, c0], [a1, g.top, c1], [a0, g.top, c1]], TRIM, { n: [0, 1, 0] });
         }
       }
-      b.collider(k.x - T, k.x + T, 0, g.top, g.za, g.zb);
+      b.collider(k.x - T, k.x + T, Math.min(bot(g, g.za), bot(g, g.zb)), g.top, g.za, g.zb);
     }
   }
   // skirt boards along the stair walls
@@ -1160,11 +1165,16 @@ function fixtures(b, lamps) {
 // ========================================================= stair closet ===
 // Storage closet under the front stairs: runs from its door under the top flight and on under the entry
 // landing to the front wall. White walls, grey tile, a flat ceiling under the landing, a foundation ledge
-// along the front wall, a wire-shelving alcove with a bifold door, a black steel cabinet, and a triangular
-// opening (in the knee wall, see stairs()) into more storage under the bottom flight.
+// along the front wall, a wire-shelving alcove with a bifold door, a black steel cabinet. The partition
+// beside the bottom flight is full height only for the first foot past the door; from there it is open
+// under the flight (see stairs()), and under the landing the closet runs on west to the stairwell wall.
 function stairCloset(b) {
-  const WH = 'paint:' + L.PAINT.storage, C = L.FRONT - 0.7, x0 = 24.8 + OPEN_W, xE = 28.55;
-  b.poly([[x0, C, L.FU.z1], [xE, C, L.FU.z1], [xE, C, 29.75], [x0, C, 29.75]], WH, { n: [0, -1, 0] });            // flat ceiling
+  const WH = 'paint:' + L.PAINT.storage, C = L.FRONT - 0.7, x0 = 24.8 + OPEN_W, xE = 28.55, xW = 20.8 + L.WALL_T / 2;
+  b.poly([[x0, C, L.FU.z1], [xE, C, L.FU.z1], [xE, C, L.FD.z1], [x0, C, L.FD.z1]], WH, { n: [0, -1, 0] });      // flat ceiling
+  b.poly([[xW, C, L.FD.z1], [xE, C, L.FD.z1], [xE, C, 29.75], [xW, C, 29.75]], WH, { n: [0, -1, 0] });            // ...on under the landing
+  // under the bottom flight, wherever the headroom is below 5.5 ft, the player is kept out
+  const sd = z => L.LOW + (z - L.FD.z0 - 1.6) * (L.FRONT - L.LOW) / (L.FD.z1 - L.FD.z0), zLow = L.FD.z0 + 1.6 + 5.5 * (L.FD.z1 - L.FD.z0) / (L.FRONT - L.LOW);
+  for (let z = 19.5; z < zLow - 1e-6; z += 0.5) b.collider(20.8, x0, 0, Math.max(1.05, sd(z)), z, Math.min(zLow, z + 0.5));
   // white linings where the stairwell's walls run on above the landing height (their faces are tan there)
   const zm = L.FU.z1 - (L.FRONT - C) / ((L.MAIN - 1.25 - C) / (L.FU.z1 - L.FU.z0));                             // soffit at FRONT
   b.poly([[xE - 0.01, L.FRONT, 19.5], [xE - 0.01, L.FRONT, zm], [xE - 0.01, L.MAIN - 1.25, L.FU.z0], [xE - 0.01, L.MAIN - 1.25, 19.5]], WH, { n: [-1, 0, 0] });
@@ -1175,7 +1185,7 @@ function stairCloset(b) {
   // marble threshold in the doorway
   b.box(25.5, 28.1, L.LOW, L.LOW + 0.04, 19.28, 19.72, 'tileMarble', { skip: ['ny'], dens: 8 });
   // foundation ledge along the front wall
-  b.box(x0, xE, L.LOW, L.LOW + 4.5, 28.95, 29.75, WH, { skip: ['ny', 'pz', 'nx', 'px'], collide: true });
+  b.box(xW, xE, L.LOW, L.LOW + 4.5, 28.95, 29.75, WH, { skip: ['ny', 'pz', 'nx', 'px'], collide: true });
   // wire-shelving alcove: framed box against the east wall, open to the west
   const za = 24.9, zb = 27.3, ax = 27.2, hy = 5.45;
   b.box(ax, xE, 0, C, za, za + 0.1, WH, { skip: ['px', 'ny', 'py'] });
