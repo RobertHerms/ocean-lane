@@ -347,7 +347,7 @@ export const FURNITURE = [
   { type: 'vanity', r: [19.5, 21.2, 7.1, 11.2], base: MAIN, face: 'e', top: 'granite', cab: '#f2f1ec', mirror: true },
   // Kitchen
   { type: 'kitchen' },
-  { type: 'table', r: [41.07, 44.67, 3.25, 6.45], base: MAIN, wood: '#c49a63', chairs: 4, chair: 'windsor', against: 'e' },   // pushed to the window wall
+  { type: 'table', r: [41.07, 44.67, 3.25, 6.45], base: MAIN, wood: '#c9a26a', chairs: 4, chair: 'wheat', against: 'e' },   // pushed to the window wall
   // Dining & living
   { type: 'table', r: [34.3, 39.7, 13.4, 16.8], base: MAIN, wood: '#3e2518', chairs: 6, chair: 'dining' },
   // couches meet at the front outside corner with an end table (and table lamp) between them

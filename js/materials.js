@@ -16,6 +16,7 @@ const DEFS = {
   // area rugs upstairs: a dusty-blue traditional pattern (drawn), laid once across each rug
   rugDining: { color: '#ffffff', roughness: 1, procedural: 'rugPattern', albedo: [0.33, 0.37, 0.42] },
   rugLiving: { color: '#ffffff', roughness: 1, procedural: 'rugPattern', albedo: [0.33, 0.37, 0.42] },
+  brocade: { color: '#ffffff', roughness: 0.8, procedural: 'brocade', repeat: 0.9, albedo: [0.13, 0.07, 0.035] },   // dining chair seats
   concrete: { map: 'concrete.jpg', repeat: 10, roughness: 0.85 },
   stone: { map: 'concrete.jpg', repeat: 4, roughness: 0.9, color: '#d8cfc0' },
   granite: { map: 'granite_bath1.jpg', repeat: 2.2, roughness: 0.18 },
@@ -198,6 +199,26 @@ function proceduralTexture(kind) {
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
     cache.set(kind, t);
     return t;
+  } else if (kind === 'brocade') {
+    // bronze-brown brocade: muted gold paisley swirls in offset rows (tiles seamlessly)
+    g.fillStyle = '#5c3b24'; g.fillRect(0, 0, 512, 512);
+    g.globalAlpha = 0.08;
+    for (let x = 0; x < 512; x += 4) { g.fillStyle = x % 8 ? '#3e2716' : '#7a5636'; g.fillRect(x, 0, 2, 512); }
+    const paisley = (cx, cy, rot, sc) => {
+      g.save(); g.translate(cx, cy); g.rotate(rot); g.scale(sc, sc);
+      g.beginPath(); g.moveTo(0, 58); g.bezierCurveTo(-52, 40, -46, -38, 4, -50); g.bezierCurveTo(44, -58, 50, -18, 22, -6);
+      g.bezierCurveTo(8, 0, 12, 16, 26, 12); g.bezierCurveTo(30, 36, 18, 52, 0, 58);
+      g.globalAlpha = 0.75; g.fillStyle = '#9c7a4a'; g.fill();
+      g.globalAlpha = 0.9; g.lineWidth = 4; g.strokeStyle = '#5c3b24';
+      g.beginPath(); g.moveTo(0, 40); g.bezierCurveTo(-30, 26, -28, -26, 4, -32); g.bezierCurveTo(26, -36, 30, -14, 14, -10); g.stroke();
+      g.beginPath(); g.arc(-4, 8, 9, 0, Math.PI * 2); g.stroke();
+      g.globalAlpha = 0.7; g.fillStyle = '#9c7a4a';
+      for (let i = 0; i < 7; i++) { const a = -0.4 + i * 0.5; g.beginPath(); g.arc(Math.cos(a) * 74, 12 + Math.sin(a) * 70, 3.5, 0, Math.PI * 2); g.fill(); }
+      g.restore();
+    };
+    for (const [cx, cy, rot] of [[128, 128, 0.5], [384, 384, 0.5], [384, 128, -2.6], [128, 384, -2.6]]) {
+      for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) paisley(cx + ox, cy + oy, rot, 0.95);
+    }
   } else if (kind === 'shingles') {
     // architectural asphalt shingles, 5" exposure
     g.fillStyle = '#39383a'; g.fillRect(0, 0, 512, 512);

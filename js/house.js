@@ -1347,16 +1347,40 @@ const FURN = {
   },
   table(b, f) {
     const [x0, x1, z0, z1] = f.r, F = f.base, wood = 'stain:' + f.wood;
-    const H = 2.5;
-    b.box(x0, x1, F + H - 0.14, F + H, z0, z1, wood, { dens: 6, bevel: 0.035 });
-    b.box(x0 + 0.25, x1 - 0.25, F + H - 0.45, F + H - 0.14, z0 + 0.25, z1 - 0.25, wood, { skip: ['py'] });
+    const H = 2.5, top = F + H;
     if (f.chair === 'dining') {
+      // moulded top edge (stacked bevelled layers), 0.35 apron, double pedestal: turned vase columns on
+      // four splayed S-curved carved feet
+      b.box(x0, x1, top - 0.06, top, z0, z1, wood, { dens: 6, bevel: 0.025 });
+      b.box(x0 + 0.03, x1 - 0.03, top - 0.1, top - 0.06, z0 + 0.03, z1 - 0.03, wood, { skip: ['py'], dens: 6, bevel: 0.02 });
+      b.box(x0 + 0.015, x1 - 0.015, top - 0.14, top - 0.1, z0 + 0.015, z1 - 0.015, wood, { skip: ['py'], dens: 6, bevel: 0.02 });
+      b.box(x0 + 0.25, x1 - 0.25, top - 0.49, top - 0.14, z0 + 0.25, z1 - 0.25, wood, { skip: ['py'] });
+      const foot = new THREE.Shape();
+      foot.moveTo(0.08, 0.5); foot.bezierCurveTo(0.35, 0.52, 0.42, 0.14, 0.78, 0.12); foot.quadraticCurveTo(0.93, 0.11, 0.92, 0.03);
+      foot.lineTo(0.9, 0); foot.lineTo(0.72, 0); foot.bezierCurveTo(0.55, 0.02, 0.4, 0.3, 0.08, 0.3); foot.lineTo(0.08, 0.5);
+      const pz = (z0 + z1) / 2;
       for (const px of [x0 + 1.1, x1 - 1.1]) {
-        b.prim(new THREE.CylinderGeometry(0.22, 0.35, H - 0.6, 12), wood, px, F + (H - 0.45) / 2 + 0.15, (z0 + z1) / 2);
-        b.box(px - 0.3, px + 0.3, F, F + 0.3, z0 + 0.6, z1 - 0.6, wood, { skip: ['ny'] });
+        b.mesh(turned([px, F + 0.15, pz], [px, top - 0.49, pz], [[0.001, 0], [0.22, 0], [0.22, 0.14], [0.15, 0.19], [0.2, 0.3], [0.25, 0.42],
+          [0.22, 0.55], [0.1, 0.7], [0.15, 0.74], [0.15, 0.77], [0.09, 0.82], [0.13, 0.9], [0.18, 0.93], [0.18, 1], [0.001, 1]], 20), wood);
+        for (let k = 0; k < 4; k++) {
+          const g = new THREE.ExtrudeGeometry(foot, { depth: 0.12, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 10 });
+          g.translate(0, 0.02, -0.06);
+          b.prim(g, wood, px, F, pz, -(Math.PI / 4 + k * Math.PI / 2));
+        }
       }
     } else {
-      for (const [px, pz] of [[x0 + 0.3, z0 + 0.3], [x1 - 0.3, z0 + 0.3], [x0 + 0.3, z1 - 0.3], [x1 - 0.3, z1 - 0.3]]) b.prim(new THREE.CylinderGeometry(0.1, 0.07, H - 0.14, 10), wood, px, F + (H - 0.14) / 2, pz);
+      // breakfast table: top with breadboard ends (grain across), 0.3 apron inset 0.15, four turned legs
+      const T = 0.12, be = 0.25, ab = top - T - 0.3;
+      b.box(x0 + be, x1 - be, top - T, top, z0, z1, wood, { dens: 6, bevel: 0.03 });
+      for (const [xa, xb] of [[x0, x0 + be], [x1 - be, x1]]) {
+        b.box(xa, xb, top - T, top, z0, z1, wood, { dens: 6, bevel: 0.03, uvFaces: { py: [[z0, xa], [z1, xa], [z1, xb], [z0, xb]] } });
+      }
+      b.box(x0 + 0.15, x1 - 0.15, ab, top - T, z0 + 0.15, z1 - 0.15, wood, { skip: ['py'] });
+      for (const lx of [x0 + 0.25, x1 - 0.25]) for (const lz of [z0 + 0.25, z1 - 0.25]) {
+        b.mbox(lx - 0.1, lx + 0.1, ab - 0.25, ab, lz - 0.1, lz + 0.1, wood);         // square top block
+        b.mesh(turned([lx, F, lz], [lx, ab - 0.25, lz], [[0.001, 0], [0.066, 0], [0.07, 0.02], [0.075, 0.3], [0.08, 0.45], [0.09, 0.5],
+          [0.09, 0.53], [0.07, 0.56], [0.078, 0.62], [0.098, 0.74], [0.075, 0.86], [0.088, 0.9], [0.088, 0.93], [0.07, 0.955], [0.092, 0.98], [0.092, 1], [0.001, 1]]), wood);
+      }
     }
     b.collider(x0, x1, F, F + H, z0, z1);
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
@@ -1770,58 +1794,163 @@ function sleighPanel(b, x0, x1, z0, z1, F, H, wood, axis) {
   }
   if (axis === 'z') b.collider(x0, x1, F, F + H, z0, z1); else b.collider(x0, x1, F, F + H, z0, z1);
 }
-function chair(b, x, z, F, face, wood, style) {
-  const [dx, dz] = faceDir(face);
-  const dining = style === 'dining';
-  const s = dining ? 0.95 : 0.85;
-  // local frame: forward (toward the table) = (dx, dz), side = perpendicular
-  const fx = dx, fz = dz, sx = -dz, sz = dx;
-  const P = (f, sd) => [x + fx * f + sx * sd, z + fz * f + sz * sd];
-  const ang = Math.atan2(fx, fz);
-  if (dining) {
-    const seat = new THREE.BoxGeometry(2 * s - 0.05, 0.22, 2 * s - 0.1);
-    b.prim(seat, wood, x, F + 1.42, z, ang);
-    const cush = new THREE.BoxGeometry(2 * s - 0.2, 0.2, 2 * s - 0.3, 1, 1, 1);
-    const pos = cush.attributes.position;
-    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0) { pos.setX(i, pos.getX(i) * 0.92); pos.setZ(i, pos.getZ(i) * 0.9); }
-    cush.computeVertexNormals();
-    b.prim(cush, 'fabric:#6b5238', x, F + 1.62, z, ang);
-  } else {
-    b.prim(new THREE.BoxGeometry(2 * s, 0.14, 2 * s), wood, x, F + 1.5, z, ang);
-  }
-  for (const [f, sd] of [[s - 0.12, s - 0.12], [s - 0.12, -s + 0.12], [-s + 0.12, s - 0.12], [-s + 0.12, -s + 0.12]]) {
-    const [px, pz] = P(f, sd);
-    b.prim(new THREE.CylinderGeometry(0.07, dining ? 0.045 : 0.05, 1.35, 10), wood, px, F + 0.67, pz);
-  }
-  // back
-  const H = dining ? 3.75 : 3.25;
-  const back = -s + 0.08;
-  for (const sd of [s - 0.1, -s + 0.1]) {
-    const [px, pz] = P(back, sd);
-    b.prim(new THREE.CylinderGeometry(0.065, 0.075, H - 1.45, 10), wood, px, F + 1.45 + (H - 1.45) / 2, pz);
-  }
-  if (dining) {
-    // arched top rail + vase-shaped splat
-    const arc = new THREE.CatmullRomCurve3([-s + 0.1, -0.4, 0, 0.4, s - 0.1].map((sd, i) => {
-      const [px, pz] = P(back, sd); return new THREE.Vector3(px, F + H - 0.12 + [0, 0.12, 0.18, 0.12, 0][i], pz);
-    }));
-    b.mesh(new THREE.TubeGeometry(arc, 16, 0.075, 8), wood);
-    const sh = new THREE.Shape();
-    sh.moveTo(-0.18, 0); sh.bezierCurveTo(-0.34, 0.5, -0.12, 0.9, -0.26, 1.4); sh.bezierCurveTo(-0.34, 1.8, -0.22, 1.95, -0.2, 2.05);
-    sh.lineTo(0.2, 2.05); sh.bezierCurveTo(0.22, 1.95, 0.34, 1.8, 0.26, 1.4); sh.bezierCurveTo(0.12, 0.9, 0.34, 0.5, 0.18, 0); sh.lineTo(-0.18, 0);
-    const splat = new THREE.ExtrudeGeometry(sh, { depth: 0.06, bevelEnabled: false, curveSegments: 8 });
-    splat.translate(0, 0, -0.03);
-    const [px, pz] = P(back, 0);
-    b.prim(splat, wood, px, F + 1.55, pz, ang);
-  } else {
-    const [tx, tz] = P(back, 0);
-    b.prim(new THREE.BoxGeometry(2 * s - 0.2, 0.3, 0.1), wood, tx, F + H - 0.15, tz, ang);
-    for (let i = -2; i <= 2; i++) {
-      const [px, pz] = P(back, i * 0.28);
-      b.prim(new THREE.CylinderGeometry(0.03, 0.03, H - 1.8, 6), wood, px, F + 1.55 + (H - 1.8) / 2, pz);
+// Lathe along the segment p0 → p1; profile [[r, t], ...], t = 0..1 from p0 to p1.
+function turned(p0, p1, profile, seg = 14, phi = 0) {
+  const a = new THREE.Vector3(...p0), d = new THREE.Vector3(...p1).sub(a), len = d.length();
+  const g = new THREE.LatheGeometry(profile.map(([r, t]) => new THREE.Vector2(r, t * len)), seg, phi);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  g.translate(a.x, a.y, a.z);
+  return g;
+}
+// Tube along a curve with its radius following rf(t), t = 0..1 along the curve.
+function taperTube(curve, rf, segs = 24, radial = 8, closed = false) {
+  const g = new THREE.TubeGeometry(curve, segs, 1, radial, closed), pos = g.attributes.position;
+  const c = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i <= segs; i++) {
+    curve.getPointAt(i / segs, c);
+    for (let j = 0; j <= radial; j++) {
+      const k = i * (radial + 1) + j;
+      v.fromBufferAttribute(pos, k).sub(c).multiplyScalar(rf(i / segs)).add(c);
+      pos.setXYZ(k, v.x, v.y, v.z);
     }
   }
+  g.computeVertexNormals();
+  return g;
+}
+// piecewise-linear [[t, v], ...] → function of t
+const ramp = pts => t => {
+  for (let i = 1; i < pts.length; i++) if (t <= pts[i][0]) return pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * (t - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0]);
+  return pts[pts.length - 1][1];
+};
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+// A flat board in a chair back: runs x0 → x1 between edge heights yb(x) and yt(x), `thick` deep, centred on
+// z = zAt(x, y) (the back's rake and bend).
+function backBoard(x0, x1, yb, yt, thick, zAt, n = 16) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n; pts.push(new THREE.Vector2(x, yb(x))); }
+  for (let i = n; i >= 0; i--) { const x = x0 + (x1 - x0) * i / n; pts.push(new THREE.Vector2(x, yt(x))); }
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: thick, bevelEnabled: false });
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) - thick / 2 + zAt(pos.getX(i), pos.getY(i)));
+  g.computeVertexNormals();
+  return g;
+}
+
+// Chairs are built in a local frame (+z toward the table, y up from the floor) and turned into place.
+function chair(b, x, z, F, face, wood, style) {
+  const [dx, dz] = faceDir(face);
+  const put = (g, mat = wood) => b.prim(g, mat, x, F, z, Math.atan2(dx, dz));
+  const s = style === 'dining' ? diningChair(put) : wheatChair(put);
   b.collider(x - s, x + s, F, F + 1.7, z - s, z + s);
+}
+
+// Wheat-back (sheaf-back) Windsor: dished saddle seat, splayed turned legs with an H-stretcher and a front
+// stretcher, turned back posts with acorn finials, a bent crest rail and a lower back rail joined by a fan
+// of spindles gathered into a sheaf half way up.
+function wheatChair(put) {
+  const seat = new THREE.BoxGeometry(1.35, 0.12, 1.3, 14, 1, 14), sp = seat.attributes.position;
+  for (let i = 0; i < sp.count; i++) {
+    let u = sp.getX(i) / 0.675, v = sp.getZ(i) / 0.65;
+    const m = Math.max(Math.abs(u), Math.abs(v));
+    if (m > 1e-6) { const k = m / Math.pow(u ** 4 + v ** 4, 0.25); u *= k; v *= k; }      // rounded (superellipse) plan
+    const dish = sp.getY(i) > 0 ? 0.035 * Math.max(0, 1 - u * u - (v + 0.1) ** 2) : 0;
+    sp.setXYZ(i, u * 0.675, sp.getY(i) + 1.44 - dish, v * 0.65);
+  }
+  seat.computeVertexNormals();
+  put(seat);
+  // legs splayed about 5 degrees, turned with a vase and rings
+  const legs = [[-0.45, 0.38], [0.45, 0.38], [-0.45, -0.36], [0.45, -0.36]].map(([lx, lz]) => ({
+    top: [lx, 1.39, lz], foot: [lx + Math.sign(lx) * 0.12, 0, lz + Math.sign(lz) * 0.1] }));
+  const legAt = (l, y) => l.foot.map((c, i) => c + (l.top[i] - c) * y / 1.39);
+  for (const l of legs) put(turned(l.foot, l.top, [[0.001, 0], [0.042, 0], [0.045, 0.06], [0.055, 0.35], [0.062, 0.4], [0.045, 0.43],
+    [0.058, 0.5], [0.07, 0.7], [0.06, 0.9], [0.045, 0.97], [0.045, 1], [0.001, 1]], 12));
+  const stretch = [[0.001, 0], [0.028, 0], [0.03, 0.1], [0.042, 0.5], [0.03, 0.9], [0.028, 1], [0.001, 1]];
+  const sides = [[0, 2], [1, 3]].map(([f, k]) => [legAt(legs[f], 0.5), legAt(legs[k], 0.5)]);
+  for (const [p, q] of sides) put(turned(p, q, stretch, 10));
+  const mid = sides.map(([p, q]) => p.map((c, i) => (c + q[i]) / 2));
+  put(turned(mid[0], mid[1], stretch, 10));                                              // H-stretcher
+  put(turned(legAt(legs[0], 0.62), legAt(legs[1], 0.62), stretch, 10));                 // front stretcher
+  // back: posts raked back; crest rail and lower rail bent back; spindles in a sheaf
+  const zb = y => -0.5 - (y - 1.46) * 0.13, bow = x => 0.07 * (1 - (x / 0.5) ** 2), zAt = (x, y) => zb(y) - bow(x);
+  for (const sx of [-1, 1]) {
+    put(turned([sx * 0.5, 1.46, zb(1.46)], [sx * 0.52, 3.3, zb(3.3)], [[0.001, 0], [0.05, 0], [0.052, 0.05], [0.04, 0.15], [0.048, 0.45],
+      [0.042, 0.6], [0.038, 0.95], [0.04, 1], [0.001, 1]], 12));
+    const acorn = new THREE.SphereGeometry(0.05, 12, 8); acorn.scale(1, 1.35, 1);
+    acorn.translate(sx * 0.52, 3.36, zb(3.36)); put(acorn);
+  }
+  const cb = x => 2.98 + 0.03 * (1 - (x / 0.47) ** 2);
+  put(backBoard(-0.5, 0.5, cb, x => 3.21 + 0.06 * (1 - (x / 0.5) ** 2), 0.07, zAt));             // crest
+  put(backBoard(-0.5, 0.5, () => 2.0, () => 2.1, 0.06, zAt));                                    // lower rail
+  for (let i = 0; i < 9; i++) {
+    const u = (i - 4) / 4, pt = (x, y) => V3(x, y, zAt(x, y));
+    const path = new THREE.CatmullRomCurve3([pt(u * 0.4, cb(u * 0.4) + 0.02), pt(u * 0.2, 2.65), pt(u * 0.05, 2.35), pt(u * 0.3, 2.08)], false, 'centripetal');
+    put(new THREE.TubeGeometry(path, 16, 0.016, 5));
+  }
+  const band = new THREE.CylinderGeometry(0.1, 0.1, 0.07, 16); band.scale(1, 1, 0.45); band.translate(0, 2.35, zAt(0, 2.35)); put(band);   // sheaf
+  return 0.7;
+}
+
+// Dining chair: cabriole front legs with carved knees, straight rear legs splayed back, a serpentine
+// upholstered seat in brocade, an open back with an interlaced figure-8 splat and small volutes, and an
+// arched crest rail with scrolled ends and a carved shell at its centre.
+function diningChair(put) {
+  const zf = u => 0.78 + 0.05 * Math.cos(1.5 * Math.PI * u);                     // serpentine front edge
+  const outline = (inset, back) => {
+    const pts = [[0.8 - inset, back], [-0.8 + inset, back]];
+    for (let i = 0; i <= 16; i++) { const u = -1 + 2 * i / 16; pts.push([u * (0.88 - inset), zf(u) - inset]); }
+    return new THREE.Shape(pts.map(([px, pz]) => new THREE.Vector2(px, pz)));
+  };
+  const flat = (shape, y0, y1, o = {}) => {
+    const bt = o.bevelThickness || 0;
+    const g = new THREE.ExtrudeGeometry(shape, { depth: y1 - y0 - 2 * bt, bevelEnabled: !!bt, curveSegments: 12, ...o });
+    g.rotateX(Math.PI / 2); g.translate(0, y1 - bt, 0);
+    return g;
+  };
+  put(flat(outline(0, -0.78), 1.28, 1.42));                                                  // seat rails
+  put(flat(outline(0.06, -0.64), 1.42, 1.6, { bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 3 }), 'brocade');
+  put(new THREE.BoxGeometry(0.5, 0.2, 0.14).translate(0, 1.52, -0.72));                     // shoe under the splat
+  // cabriole front legs: knee forward, ankle back, pad foot; a small carving on each knee
+  for (const sx of [-1, 1]) {
+    const lx = sx * 0.74, P = (y, dz) => V3(lx, y, 0.62 + dz);
+    put(taperTube(new THREE.CatmullRomCurve3([P(1.3, 0), P(1.06, 0.08), P(0.72, 0), P(0.3, -0.06), P(0.1, -0.01), P(0.02, 0.05)]),
+      ramp([[0, 0.07], [0.12, 0.085], [0.45, 0.055], [0.8, 0.035], [1, 0.045]]), 24, 10));
+    const knee = new THREE.SphereGeometry(0.06, 10, 8); knee.scale(0.9, 1.3, 0.45); knee.translate(lx, 1.08, 0.75); put(knee);
+    const pad = new THREE.SphereGeometry(0.07, 12, 8); pad.scale(1, 0.45, 1.1); pad.translate(lx, 0.03, 0.68); put(pad);
+  }
+  // rear legs splayed back, and the stiles above the seat raked back
+  const zb = y => -0.72 - (y - 1.4) * 0.107, lean = (x, y) => zb(y);
+  for (const sx of [-1, 1]) {
+    put(turned([sx * 0.74, 0, -0.95], [sx * 0.72, 1.4, zb(1.4)], [[0.001, 0], [0.042, 0], [0.058, 1], [0.001, 1]], 4, Math.PI / 4));
+    put(turned([sx * 0.72, 1.4, zb(1.4)], [sx * 0.7, 3.5, zb(3.5)], [[0.001, 0], [0.058, 0], [0.045, 1], [0.001, 1]], 4, Math.PI / 4));
+  }
+  // crest: arched, ears flicking up into scrolls, a scalloped shell in the middle
+  const cu = x => x / 0.74;
+  put(backBoard(-0.74, 0.74, x => 3.3 + 0.06 * (1 - cu(x) ** 2), x => 3.48 + 0.1 * (1 - cu(x) ** 2) + 0.4 * Math.max(0, Math.abs(cu(x)) - 0.85), 0.08, lean, 24));
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.TorusGeometry(0.05, 0.016, 6, 14, Math.PI * 1.6);
+    ear.rotateZ(sx > 0 ? -0.6 : Math.PI + 0.6); ear.translate(sx * 0.73, 3.52, zb(3.52) + 0.04); put(ear);
+  }
+  const shell = new THREE.Shape();
+  shell.moveTo(-0.175, 0);
+  for (let i = 0; i <= 36; i++) { const a = Math.PI - Math.PI * i / 36, r = 0.175 * (1 - 0.07 * Math.abs(Math.sin(4.5 * (Math.PI - a)))); shell.lineTo(r * Math.cos(a), 0.9 * r * Math.sin(a)); }
+  const sg = new THREE.ExtrudeGeometry(shell, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 2 });
+  sg.translate(0, 3.4, zb(3.4) + 0.04); put(sg);
+  // open back: two figure-8 ribbons crossing each other, a hair apart in depth, and volutes at the top
+  for (const k of [-1, 1]) {
+    const pts = [];
+    for (let i = 0; i < 28; i++) {
+      const th = 2 * Math.PI * i / 28, y = 2.49 + 0.8 * Math.cos(th);
+      pts.push(V3(k * 0.09 + 0.24 * Math.sin(th) * (1 - 0.7 * Math.sin(th) ** 2), y, zb(y) + k * 0.014));
+    }
+    const g = taperTube(new THREE.CatmullRomCurve3(pts, true, 'centripetal'), () => 0.032, 72, 6, true);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const zc = zb(pos.getY(i)) + k * 0.014; pos.setZ(i, zc + (pos.getZ(i) - zc) * 0.45); }   // flat ribbon
+    g.computeVertexNormals();
+    put(g);
+    const vol = new THREE.TorusGeometry(0.06, 0.015, 6, 14, Math.PI * 1.7);
+    vol.rotateZ(k > 0 ? -1.2 : Math.PI + 1.2); vol.translate(k * 0.36, 3.2, zb(3.2)); put(vol);
+  }
+  return 0.9;
 }
 function appliance(b, f, front) {
   // the cabinet stands on four levelling feet (keeps its lower edges clear of the floor)
