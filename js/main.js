@@ -100,7 +100,7 @@ async function loadBake() {
   }
 }
 
-const bake = await loadBake();
+const bake = new URLSearchParams(location.search).has('nobake') ? null : await loadBake();
 if (!bake) {
   // fallback so the layout can still be inspected before a bake exists
   scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 2.5));
