@@ -6,6 +6,9 @@ import { Builder, extrude } from './geom.js';
 
 const TRIM = 'trim';
 const EPS = 1e-4;
+const FLOOR_LEVELS = [L.LOW, L.MID, L.FRONT, L.MAIN];
+const NO_FLOOR = new Set(['foyer', 'rear', 'stcl']);   // rooms whose floors are drawn separately (landings, flights)
+const NO_CEIL = new Set(['stcl', 'rcl']);
 
 export function roomAt(x, z, y) {
   for (const r of L.ROOMS) {
@@ -18,6 +21,13 @@ function paintFor(r, y) {
   if (!r) return 'siding';
   if (r.lower && y < r.h[0] + r.rail) return 'paint:' + r.lower;
   return 'paint:' + r.paint;
+}
+// Outside finish at a point on an exterior face (n: its outward normal): stacked ledgestone all round the
+// projecting entry bay (full height) and on the front of the lower storey, cream shakes everywhere else
+function extFinish(x, z, y, n) {
+  if (x > 20.55 && x < 29.1 && z > 27.6 && z < 35.7) return 'ledgestone';
+  if (n[2] > 0.5 && z > 27.5 && y < L.SOFFIT_Y) return 'ledgestone';
+  return 'siding';
 }
 
 export function buildHouse() {
@@ -34,6 +44,7 @@ export function buildHouse() {
   railings(b);
   fixtures(b, lamps);
   kitchen(b);
+  stairCloset(b);
   furniture(b, mirrors, glass);
   wallArt(b);
   exterior(b);
@@ -79,16 +90,17 @@ function walls(b, glass, sliders) {
       }
     }
     const xs = [...cuts].sort((p, q) => p - q);
-    const opEdges = new Set();
-    for (const op of w.ops) { opEdges.add(op.a0); opEdges.add(op.a1); }
+    const opEdges = new Set(), niches = w.ops.filter(op => op.kind === 'niche');   // a niche cuts only its own face
+    for (const op of w.ops) if (op.kind !== 'niche') { opEdges.add(op.a0); opEdges.add(op.a1); }
     for (let i = 0; i < xs.length - 1; i++) {
       const p = xs[i], q = xs[i + 1];
       if (q - p < 1e-3) continue;
       const mid = (p + q) / 2;
-      const covering = w.ops.filter(op => op.a0 <= mid && op.a1 >= mid);
+      const covering = w.ops.filter(op => op.kind !== 'niche' && op.a0 <= mid && op.a1 >= mid);
+      const nichesHere = niches.filter(op => op.a0 <= mid && op.a1 >= mid);
       let ranges = [w.y.slice()];
       for (const op of covering) ranges = subtract(ranges, op.b0, op.b1);
-      for (const cut of [L.MAIN - 0.1, L.MAIN + 3]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
+      for (const cut of [L.MAIN - 0.1, L.MAIN + 3, ...(w.yCuts || []), ...nichesHere.flatMap(op => [op.b0, op.b1])]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
       for (const [s, e0] of ranges) {
         if (e0 - s < 1e-3) continue;
         // a free wall end runs on by half its thickness to close the corner; where another wall carries
@@ -102,44 +114,119 @@ function walls(b, glass, sliders) {
         if (e - s < 1e-3) continue;
         const ym = (s + Math.min(ep, eq)) / 2;
         for (const side of [-1, 1]) {
-          const probe = wp(alongX, c, mid, side * (t / 2 + 0.25), ym);
+          if (nichesHere.some(op => op.side === side && s >= op.b0 - 1e-6 && e0 <= op.b1 + 1e-6)) continue;
+          const probe = wp(alongX, c, mid, side * (t / 2 + 0.25), ym), fp = wp(alongX, c, mid, side * t / 2, ym);
           const r = roomAt(probe[0], probe[2], ym);
-          const mat = paintFor(r, ym);
+          const mat = r ? paintFor(r, ym) : extFinish(fp[0], fp[2], ym, wn(alongX, side));
           const o = side * t / 2;
           b.poly([wp(alongX, c, pp, o, s), wp(alongX, c, qq, o, s), wp(alongX, c, qq, o, eq), wp(alongX, c, pp, o, ep)], mat,
             { n: wn(alongX, side), dens: r ? undefined : 1.2, chart: r ? `wall${wi}:${side}:${s < L.MAIN - 0.2 ? 'lo' : 'hi'}` : undefined });
         }
         // end / jamb faces
         const jambMat = a => {
-          const op = w.ops.find(o2 => (o2.a0 === a || o2.a1 === a) && o2.b0 < e && o2.b1 > s);
+          const op = w.ops.find(o2 => o2.kind !== 'niche' && (o2.a0 === a || o2.a1 === a) && o2.b0 < e && o2.b1 > s);
           if (!op) return null;
           return op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, a, 0, 0)), op.b0 + 1), op.b0 + 1) : TRIM;
         };
         const ends = [[pp, -1, opEdges.has(p) ? jambMat(p) : null, p === a0 && !(jp && jp.t >= t - 1e-6)], [qq, 1, opEdges.has(q) ? jambMat(q) : null, q === a1 && !(jq && jq.t >= t - 1e-6)]];
         for (const [a, dir, jm, isWallEnd] of ends) {
           if (!jm && !isWallEnd) continue;
-          const mat = jm || paintFor(roomAt(...xz(wp(alongX, c, a + dir * 0.3, 0, 0)), ym), ym);
+          const er = roomAt(...xz(wp(alongX, c, a + dir * 0.3, 0, 0)), ym), ep0 = wp(alongX, c, a, 0, ym);
+          const mat = jm || (er ? paintFor(er, ym) : extFinish(ep0[0], ep0[2], ym, alongX ? [dir, 0, 0] : [0, 0, dir]));
           const ea = dir < 0 ? ep : eq;
           b.poly([wp(alongX, c, a, -t / 2, s), wp(alongX, c, a, t / 2, s), wp(alongX, c, a, t / 2, ea), wp(alongX, c, a, -t / 2, ea)], mat,
             { n: alongX ? [dir, 0, 0] : [0, 0, dir] });
         }
         // soffit / sill faces next to openings
         for (const op of covering) {
-          if (Math.abs(op.b1 - s) < 1e-6) b.poly([wp(alongX, c, p, -t / 2, s), wp(alongX, c, q, -t / 2, s), wp(alongX, c, q, t / 2, s), wp(alongX, c, p, t / 2, s)],
-            op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, mid, 0, 0)), s - 1), s - 1) : TRIM, { n: [0, -1, 0] });
-          if (Math.abs(op.b0 - e0) < 1e-6) b.poly([wp(alongX, c, p, -t / 2, e0), wp(alongX, c, q, -t / 2, e0), wp(alongX, c, q, t / 2, e0), wp(alongX, c, p, t / 2, e0)],
-            TRIM, { n: [0, 1, 0] });
+          if (Math.abs(op.b1 - s) < 1e-6) {
+            // soffit: each half of the wall's thickness, unless a room's flat ceiling at that height already
+            // runs over it (to the wall centreline) and the two would be coplanar
+            const mat = op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, mid, 0, 0)), s - 1), s - 1) : TRIM;
+            for (const [o0, o1] of [[-t / 2, 0], [0, t / 2]]) {
+              const pr = wp(alongX, c, mid, Math.sign(o0 + o1) * (t / 2 + 0.3), s - 0.5), r = roomAt(pr[0], pr[2], s - 0.5);
+              if (r && !r.slope && !NO_CEIL.has(r.id) && Math.abs(r.h[1] - s) < 1e-6) continue;
+              b.poly([wp(alongX, c, p, o0, s), wp(alongX, c, q, o0, s), wp(alongX, c, q, o1, s), wp(alongX, c, p, o1, s)], mat, { n: [0, -1, 0] });
+            }
+          }
+          if (Math.abs(op.b0 - e0) > 1e-6 || op.passThrough) continue;
+          // no sill under an opening at floor level (doors, the front sidelights, the patio slider): the floors
+          // (and the stoop / threshold outside) already cover it, and a sill face would be coplanar and z-fight
+          if (FLOOR_LEVELS.some(y => Math.abs(op.b0 - y) < 1e-6) && (op.kind === 'door' || op.sidelight || op.slider)) continue;
+          // a window's sill face stops where its stool starts (the stool's top is at the same height)
+          const [s0, s1] = op.kind === 'window' ? (ins => (ins > 0 ? [-t / 2, t / 2 - 0.2] : [-(t / 2 - 0.2), t / 2]))(windowInSide(w, op)) : [-t / 2, t / 2];
+          if (s1 - s0 > 1e-3) b.poly([wp(alongX, c, p, s0, e0), wp(alongX, c, q, s0, e0), wp(alongX, c, q, s1, e0), wp(alongX, c, p, s1, e0)], TRIM, { n: [0, 1, 0] });
         }
         const lo = wp(alongX, c, pp, -t / 2, s), hi = wp(alongX, c, qq, t / 2, e), ce = Math.min(e, w.colTop ?? Infinity);
         if (ce > s) b.collider(Math.min(lo[0], hi[0]), Math.max(lo[0], hi[0]), s, ce, Math.min(lo[2], hi[2]), Math.max(lo[2], hi[2]));
       }
     }
+    capTop(b, w);
     for (const op of w.ops) {
       if (op.kind === 'window') windowUnit(b, glass, w, op, sliders);
       else if (op.kind === 'door') { (op.unit ? unitCasing : casings)(b, w, op); if (op.bypass) bypassTrack(b, w, op); }
-      else if (op.passThrough) casings(b, w, op);
+      else if (op.passThrough) passThroughTrim(b, w, op);
       else if (op.garageDoor) garageTrim(b, w, op);
+      else if (op.kind === 'niche') wallNiche(b, glass, w, op);
     }
+  }
+}
+// A wall that stops below the ceilings on both sides (a half wall under a railing) gets a top face over
+// whatever of its footprint no floor, tread, solid or taller wall already covers. Where its top is the
+// floor level of the room on one side, that room's floor runs on over it (same material and lightmap chart)
+// and the edge on the other (stairwell) side gets an oak nosing.
+function capTop(b, w) {
+  if (w.slope) return;
+  const { alongX, t, c, a0, a1 } = wallInfo(w), y = w.y[1];
+  const rs = [-1, 1].map(s => {
+    const p = wp(alongX, c, (a0 + a1) / 2, s * (t / 2 + 0.3), y + 0.05), r = roomAt(p[0], p[2], y + 0.05);
+    return r && y + 0.05 < (r.slope ? L.annexCeil(p[2]) : r.h[1]) ? r : null;
+  });
+  if (!rs[0] || !rs[1]) return;
+  // the wall's footprint at its top: its length (to the joint or half a thickness past a free end) less the
+  // openings that reach the top
+  const lengthRects = (w2, yy) => {
+    const q = wallInfo(w2);
+    const e0 = joinedAt(w2, q.a0, -1, yy - 0.1, yy) ? q.a0 : q.a0 - q.t / 2, e1 = joinedAt(w2, q.a1, 1, yy - 0.1, yy) ? q.a1 : q.a1 + q.t / 2;
+    let segs = [[e0, e1]];
+    for (const op of w2.ops) if (op.b0 < yy && op.b1 >= yy - 1e-6) segs = subtract(segs, op.a0, op.a1);
+    return segs.map(([s0, s1]) => (q.alongX ? [s0, s1, q.c - q.t / 2, q.c + q.t / 2] : [q.c - q.t / 2, q.c + q.t / 2, s0, s1]));
+  };
+  const cover = [...floorRectsAt(y), ...L.SOLIDS.filter(s => Math.abs(s.b[3] - y) < 1e-6).map(s => [s.b[0], s.b[1], s.b[4], s.b[5]]),
+    ...L.WALLS.filter(w2 => w2 !== w && w2.y[0] <= y + 1e-6 && w2.y[1] > y + 0.05).flatMap(w2 => lengthRects(w2, y + 0.05))];
+  const fi = rs.findIndex(r => Math.abs(r.h[0] - y) < 1e-6), fr = rs[fi];
+  const mat = fr ? fr.floor : TRIM, o = fr ? { chart: 'floor' + y } : { dens: 8 };
+  for (const rect of lengthRects(w, y - 0.05)) {
+    for (const [x0, x1, z0, z1] of rectMinus(rect, cover)) {
+      if (x1 - x0 < 1e-3 || z1 - z0 < 1e-3) continue;
+      b.poly([[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]], mat, { n: [0, 1, 0], ...o });
+      if (!fr) continue;
+      const s = fi === 0 ? 1 : -1, face = c + s * t / 2, e0 = alongX ? x0 : z0, e1 = alongX ? x1 : z1;   // nosing on the other side
+      if (Math.abs((alongX ? (s > 0 ? z1 : z0) : (s > 0 ? x1 : x0)) - face) > 1e-3) continue;
+      const p0 = wp(alongX, c, e0, s * t / 2, y), p1 = wp(alongX, c, e1, s * (t / 2 + 0.07), y);   // (0.07: clear of a 0.06 skirt board)
+      b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y - 0.12, y, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), 'oak',
+        { skip: [alongX ? (s > 0 ? 'nz' : 'pz') : (s > 0 ? 'nx' : 'px')], dens: 8, bevel: 0.02 });
+    }
+  }
+}
+// A recessed niche in one face of a wall (op.side: ±1 on the wall's normal), op.depth deep and lined with
+// op.lining, a white pencil trim round the opening and glass shelves at the heights in op.shelves.
+function wallNiche(b, glass, w, op) {
+  const { alongX, t, c } = wallInfo(w), s = op.side, f = s * t / 2, k = s * (t / 2 - op.depth), m = op.lining;
+  const P = (a, o, y) => wp(alongX, c, a, o, y), along = d => (alongX ? [d, 0, 0] : [0, 0, d]);
+  b.poly([P(op.a0, k, op.b0), P(op.a1, k, op.b0), P(op.a1, k, op.b1), P(op.a0, k, op.b1)], m, { n: wn(alongX, s), dens: 6 });   // back
+  b.poly([P(op.a0, k, op.b1), P(op.a1, k, op.b1), P(op.a1, f, op.b1), P(op.a0, f, op.b1)], m, { n: [0, -1, 0], dens: 6 });
+  b.poly([P(op.a0, k, op.b0), P(op.a1, k, op.b0), P(op.a1, f, op.b0), P(op.a0, f, op.b0)], m, { n: [0, 1, 0], dens: 6 });
+  b.poly([P(op.a0, k, op.b0), P(op.a0, f, op.b0), P(op.a0, f, op.b1), P(op.a0, k, op.b1)], m, { n: along(1), dens: 6 });
+  b.poly([P(op.a1, k, op.b0), P(op.a1, f, op.b0), P(op.a1, f, op.b1), P(op.a1, k, op.b1)], m, { n: along(-1), dens: 6 });
+  const o = s * (t / 2 + 0.018);                                                                  // pencil trim
+  for (const [a0, y0, a1, y1] of [[op.a0, op.b0, op.a1, op.b0], [op.a0, op.b1, op.a1, op.b1], [op.a0, op.b0, op.a0, op.b1], [op.a1, op.b0, op.a1, op.b1]]) {
+    beam(b, P(a0, o, y0), P(a1, o, y1), 0.05, 0, 'porcelain', { round: true });
+  }
+  for (const y of op.shelves || []) {                                                             // glass shelves
+    glass.push({ pts: [P(op.a0, k, y), P(op.a1, k, y), P(op.a1, f, y), P(op.a0, f, y)], n: [0, 1, 0] });
+    const e0 = P(op.a0, f - s * 0.025, y - 0.02), e1 = P(op.a1, f - s * 0.005, y);
+    b.mbox(Math.min(e0[0], e1[0]), Math.max(e0[0], e1[0]), y - 0.02, y, Math.min(e0[2], e1[2]), Math.max(e0[2], e1[2]), 'paint:#cfe0dc');
   }
 }
 // The collinear wall (if any) that continues past `pos` in direction `dir` over heights s..e.
@@ -200,6 +287,45 @@ function unitCasing(b, w, op) {
     box(u0 - W - 0.06, u1 + W + 0.06, top + 0.47, top + 0.55, o0, side * (t / 2 + 0.13), TRIM, { skip: [wallSide], dens: 8 });   // bed mould
     box(u0 - W - 0.15, u1 + W + 0.15, top + 0.55, top + 0.69, o0, side * (t / 2 + 0.23), TRIM, { skip: [wallSide], dens: 8, bevel: 0.015 });  // cap
     for (const [m0, m1] of op.mullions || []) box(m0, m1, op.b0, top + 0.05, side * (t / 2 - 0.02), side * (t / 2 + 0.012), 'stain:#3b1f1a', { skip: [wallSide], dens: 6 });
+  }
+}
+// Kitchen / dining pass-through: one white stool through the wall with an apron under it on each face.
+// The face toward the room with crown (dining) gets a fluted casing with corner blocks, a frieze, bed
+// mould and a cap that stands out like a shelf (proportions as unitCasing); the kitchen face a flat casing.
+function passThroughTrim(b, w, op) {
+  const { alongX, t, c } = wallInfo(w);
+  const W = 0.33, sill = op.b0, top = op.b1, s0 = op.a0 - W, s1 = op.a1 + W;
+  const box = (a0, a1, y0, y1, d0, d1, o = {}) => {
+    const p0 = wp(alongX, c, a0, d0, y0), p1 = wp(alongX, c, a1, d1, y1);
+    b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y0, y1, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), TRIM, { dens: 8, ...o });
+  };
+  box(s0 - 0.1, s1 + 0.1, sill - 0.09, sill, -t / 2 - 0.15, t / 2 + 0.15, { bevel: 0.015 });            // stool
+  for (const side of [-1, 1]) {
+    const o0 = side * t / 2, d = p => side * (t / 2 + p);
+    const skip = [alongX ? (side > 0 ? 'nz' : 'pz') : (side > 0 ? 'nx' : 'px')];
+    const cas = (a0, a1, y0, y1, p) => casingBox(b, alongX, c, a0, a1, y0, y1, o0, d(p), side);
+    const probe = wp(alongX, c, (op.a0 + op.a1) / 2, side * (t / 2 + 0.4), sill + 1);
+    if (!roomAt(probe[0], probe[2], sill + 1)?.crown) {
+      cas(s0, op.a0, sill, top, 0.06); cas(op.a1, s1, sill, top, 0.06);
+      box(s0, s1, top, top + W, o0, d(0.06), { skip });
+      cas(s0, s1, sill - 0.09 - 0.25, sill - 0.09, 0.06);                                                  // apron
+      continue;
+    }
+    // fluted casing: a board 0.045 proud with ribs at 0.07 (bead, two ribs, outer band → three grooves)
+    cas(s0, op.a0, sill, top, 0.045); cas(op.a1, s1, sill, top, 0.045);
+    box(op.a0, op.a1, top, top + W, o0, d(0.045), { skip });
+    for (const [u0, u1] of [[0, 0.05], [0.09, 0.13], [0.17, 0.21], [0.25, W]]) {
+      cas(op.a0 - u1, op.a0 - u0, sill, top, 0.07); cas(op.a1 + u0, op.a1 + u1, sill, top, 0.07);
+      box(op.a0, op.a1, top + u0, top + u1, o0, d(0.07), { skip });
+    }
+    for (const [a0, a1] of [[s0, op.a0], [op.a1, s1]]) box(a0, a1, top, top + W, o0, d(0.075), { skip });   // corner blocks
+    const fTop = top + W + 0.3;
+    box(s0, s1, top + W, fTop, o0, d(0.08), { skip });                                                     // frieze
+    box(s0 - 0.06, s1 + 0.06, fTop - 0.08, fTop, o0, d(0.13), { skip });                                   // bed mould
+    box(s0 - 0.15, s1 + 0.15, fTop, fTop + 0.14, o0, d(0.25), { skip, bevel: 0.015 });                     // cap
+    cas(s0, s1, sill - 0.09 - 0.3, sill - 0.09, 0.06);                                                     // apron + bead
+    const yb = sill - 0.09 - 0.28;
+    beam(b, wp(alongX, c, s0, d(0.06), yb), wp(alongX, c, s1, d(0.06), yb), 0.045, 0, TRIM, { round: true });
   }
 }
 // Head track and floor guide for bypass closet doors.
@@ -277,7 +403,14 @@ function sliderUnit(b, glass, w, op, inSide, sliders) {
   });
 }
 
-// Double-hung vinyl window: frame, sashes, glass, interior casing + stool, raised blinds.
+// Which side of the wall (±1 on its normal) a window's room is on.
+function windowInSide(w, op) {
+  if (op.inSide) return op.inSide;
+  const { alongX, t, c } = wallInfo(w);
+  for (const s of [-1, 1]) { const p = wp(alongX, c, (op.a0 + op.a1) / 2, s * (t / 2 + 0.4), (op.b0 + op.b1) / 2); if (roomAt(p[0], p[2], (op.b0 + op.b1) / 2)) return s; }
+  return 1;
+}
+// Vinyl window (single tall lites; op.dh for double-hung): frame, sashes, glass, interior casing + stool, raised blinds.
 function windowUnit(b, glass, w, op, sliders) {
   const { alongX, t, c } = wallInfo(w);
   const P = (a, o, y) => wp(alongX, c, a, o, y);
@@ -290,12 +423,10 @@ function windowUnit(b, glass, w, op, sliders) {
     }
     return;
   }
-  const inSide = op.inSide || (() => {
-    for (const s of [-1, 1]) { const p = P((op.a0 + op.a1) / 2, s * (t / 2 + 0.4), (op.b0 + op.b1) / 2); if (roomAt(p[0], p[2], (op.b0 + op.b1) / 2)) return s; }
-    return 1;
-  })();
+  const inSide = windowInSide(w, op);
   if (op.slider) return sliderUnit(b, glass, w, op, inSide, sliders);
-  const fw = 0.16, depth = 0.34;
+  // tiled: a window in a tiled shower wall, set further out so the tile returns into the opening
+  const fw = 0.16, depth = op.tiled ? 0.12 : 0.34, sh = op.tiled ? -0.15 : 0;
   const f0 = inSide * -0.02, f1 = inSide * (depth - 0.02);
   const frame = (s0, s1, y0, y1, d0 = f0, d1 = f1) => {
     const p0 = P(s0, d0, y0), p1 = P(s1, d1, y1);
@@ -314,35 +445,46 @@ function windowUnit(b, glass, w, op, sliders) {
     acc = s1;
     if (k > 0) frame(s0 - 0.06, s0 + 0.06, op.b0, op.b1);
     const fixed = op.panes && weights[k] === big;
-    const ys = h > 2.6 && !fixed
-      ? [[op.b0 + fw, op.b0 + h / 2 + 0.03, inSide * 0.2], [op.b0 + h / 2 - 0.03, op.b1 - fw, inSide * 0.08]]
-      : [[op.b0 + fw, op.b1 - fw, inSide * 0.14]];
+    const ys = op.dh && h > 2.6 && !fixed   // double-hung only when asked for (dh); the house's windows are single tall lites (photos)
+      ? [[op.b0 + fw, op.b0 + h / 2 + 0.03, inSide * (0.2 + sh)], [op.b0 + h / 2 - 0.03, op.b1 - fw, inSide * (0.08 + sh)]]
+      : [[op.b0 + fw, op.b1 - fw, inSide * (0.14 + sh)]];
     for (const [y0, y1, d] of ys) {
       const dd0 = d - inSide * 0.05, dd1 = d + inSide * 0.05;
       frame(s0, s0 + sash, y0, y1, dd0, dd1); frame(s1 - sash, s1, y0, y1, dd0, dd1);
       frame(s0, s1, y0, y0 + sash, dd0, dd1); frame(s0, s1, y1 - sash, y1, dd0, dd1);
-      glass.push({ pts: [P(s0 + sash, d, y0 + sash), P(s1 - sash, d, y0 + sash), P(s1 - sash, d, y1 - sash), P(s0 + sash, d, y1 - sash)], n: wn(alongX, inSide) });
+      glass.push({ pts: [P(s0 + sash, d, y0 + sash), P(s1 - sash, d, y0 + sash), P(s1 - sash, d, y1 - sash), P(s0 + sash, d, y1 - sash)], n: wn(alongX, inSide), frosted: !!op.frosted });
     }
   }
-  // interior casing, stool and apron (cw: narrower casing that stops at a bow window's joints)
+  if (op.tiled) {
+    // the wall tile (op.tiled) returns into the opening - jambs, head and sill - back to the frame; no
+    // casing, stool or blind
+    const zi = f1, zt = inSide * (t / 2 + 0.005), m = op.tiled, along = s => (alongX ? [s, 0, 0] : [0, 0, s]);
+    for (const [a, s] of [[op.a0 + 0.005, 1], [op.a1 - 0.005, -1]]) b.poly([P(a, zi, op.b0), P(a, zt, op.b0), P(a, zt, op.b1), P(a, zi, op.b1)], m, { n: along(s), dens: 6 });
+    for (const [y, n] of [[op.b1 - 0.005, [0, -1, 0]], [op.b0 + 0.005, [0, 1, 0]]]) b.poly([P(op.a0, zi, y), P(op.a1, zi, y), P(op.a1, zt, y), P(op.a0, zt, y)], m, { n, dens: 6 });
+  } else {
+  // interior casing, stool and apron (cw: narrower casing that stops at a bow window's joints). Over a
+  // countertop (sill within a foot of it) there's no apron and only a narrow stool: the backsplash is below
   const o0 = inSide * t / 2, o1 = inSide * (t / 2 + 0.055), W = 0.29;
   const [W0, W1] = op.cw || [W, W], j0 = W0 < W, j1 = W1 < W;
   casingBox(b, alongX, c, op.a0 - W0, op.a0, op.b0, op.b1 + W, o0, o1, inSide);
   casingBox(b, alongX, c, op.a1, op.a1 + W1, op.b0, op.b1 + W, o0, o1, inSide);
   casingBox(b, alongX, c, op.a0 - W0 - (j0 ? 0 : 0.03), op.a1 + W1 + (j1 ? 0 : 0.03), op.b1, op.b1 + W + 0.02, o0, o1, inSide);
-  casingBox(b, alongX, c, op.a0 - W0 - (j0 ? 0 : 0.1), op.a1 + W1 + (j1 ? 0 : 0.1), op.b0 - 0.07, op.b0, inSide * (t / 2 - 0.2), inSide * (t / 2 + 0.2), inSide);
-  casingBox(b, alongX, c, op.a0 - W0 + (j0 ? 0 : 0.02), op.a1 + W1 - (j1 ? 0 : 0.02), op.b0 - 0.37, op.b0 - 0.07, o0, o1, inSide);
+  casingBox(b, alongX, c, op.a0 - W0 - (j0 ? 0 : 0.1), op.a1 + W1 + (j1 ? 0 : 0.1), op.b0 - 0.07, op.b0, inSide * (t / 2 - 0.2), inSide * (t / 2 + (op.overCounter ? 0.1 : 0.2)), inSide);
+  if (!op.overCounter) casingBox(b, alongX, c, op.a0 - W0 + (j0 ? 0 : 0.02), op.a1 + W1 - (j1 ? 0 : 0.02), op.b0 - 0.37, op.b0 - 0.07, o0, o1, inSide);
   // raised blinds: slat stack at the head of the opening
   const bs = inSide * (t / 2 - 0.12);
   const p0 = P(op.a0 + 0.05, bs - inSide * 0.08, op.b1 - 0.42), p1 = P(op.a1 - 0.05, bs + inSide * 0.08, op.b1 - 0.02);
   b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), op.b1 - 0.42, op.b1 - 0.02, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), 'blind', { dens: 8 });
+  }
   // exterior trim
   const e0 = -inSide * t / 2, e1 = -inSide * (t / 2 + 0.07);
+  // xh: head (and flat bottom) trim height; noSill: flat trim all round instead of a projecting sill board
   const [X0, X1] = op.xw || [0.35, 0.35], k0 = op.xw ? 0 : 0.05, k1 = op.xw ? 0 : 0.05;
-  casingBox(b, alongX, c, op.a0 - X0, op.a0, op.b0 - 0.2, op.b1 + 0.35, e0, e1, -inSide, 'vinyl');
-  casingBox(b, alongX, c, op.a1, op.a1 + X1, op.b0 - 0.2, op.b1 + 0.35, e0, e1, -inSide, 'vinyl');
-  casingBox(b, alongX, c, op.a0 - X0, op.a1 + X1, op.b1, op.b1 + 0.35, e0, e1, -inSide, 'vinyl');
-  casingBox(b, alongX, c, op.a0 - X0 - k0, op.a1 + X1 + k1, op.b0 - 0.2, op.b0, e0, -inSide * (t / 2 + 0.16), -inSide, 'vinyl');
+  const XH = op.xh ?? 0.35, XB = op.noSill ? (op.xh ?? 0.2) : 0.2;
+  casingBox(b, alongX, c, op.a0 - X0, op.a0, op.b0 - XB, op.b1 + XH, e0, e1, -inSide, 'vinyl');
+  casingBox(b, alongX, c, op.a1, op.a1 + X1, op.b0 - XB, op.b1 + XH, e0, e1, -inSide, 'vinyl');
+  casingBox(b, alongX, c, op.a0 - X0, op.a1 + X1, op.b1, op.b1 + XH, e0, e1, -inSide, 'vinyl');
+  casingBox(b, alongX, c, op.a0 - X0 - k0, op.a1 + X1 + k1, op.b0 - XB, op.b0, e0, op.noSill ? e1 : -inSide * (t / 2 + 0.16), -inSide, 'vinyl');
 }
 
 // ============================================================ bow window ===
@@ -359,10 +501,13 @@ function bowWindow(b, glass) {
   const dirOf = k => { const dx = V[k + 1][0] - V[k][0], dz = V[k + 1][1] - V[k][1], l = Math.hypot(dx, dz); return [dx / l, dz / l, l]; };
   const cross = (k, P, zc) => { const [dx, dz] = dirOf(k); const u = (zc - P[1]) / dz; return [P[0] + dx * u, zc]; };   // facet k's face line through P meets z = zc
   const outline = (P, zc) => [cross(0, P[1], zc), ...P.slice(1, n), cross(n - 1, P[n - 1], zc)];
-  b.poly(outline(I, z).map(([px, pz]) => [px, F, pz]), 'wood', { n: [0, 1, 0] });
-  b.poly(outline(I, z + 0.2).map(([px, pz]) => [px, ceil, pz]), 'ceiling', { n: [0, -1, 0] });
-  b.poly(outline(O, z + h).map(([px, pz]) => [px, F - 0.6, pz]), 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.poly(outline(I, z - h).map(([px, pz]) => [px, L.BOW.seat, pz]), TRIM, { n: [0, 1, 0] });   // window seat top, from the header wall's inner face
+  b.poly(outline(I, z + 0.25).map(([px, pz]) => [px, ceil, pz]), 'ceiling', { n: [0, -1, 0] });   // from the header's outer face
+  b.poly(outline(O, z + h).map(([px, pz]) => [px, L.BOW.base, pz]), 'soffit', { n: [0, -1, 0], dens: 2 });
   const paint = 'paint:' + L.PAINT.tan, ext = h * Math.tan(step / 2);
+  // cantilevered bow: flat shakes in the wall plane from the header wall's top up to its underside; the seat front inside
+  b.poly([[x0, F - 0.1, z + h], [x1, F - 0.1, z + h], [x1, L.BOW.base, z + h], [x0, L.BOW.base, z + h]], 'siding', { n: [0, 0, 1], dens: 1.2 });
+  b.poly([[x0, F, z - h], [x1, F, z - h], [x1, L.BOW.seat, z - h], [x0, L.BOW.seat, z - h]], paint, { n: [0, 0, -1] });
   for (let k = 0; k < n; k++) {
     const [dx, dz, len] = dirOf(k), first = k === 0, last = k === n - 1;
     const mx = (V[k][0] + V[k + 1][0]) / 2, mz = (V[k][1] + V[k + 1][1]) / 2, ang = Math.atan2(-dz, dx);
@@ -376,19 +521,19 @@ function bowWindow(b, glass) {
       // local frame: the panel runs along +x at z = mz, the room is on the -z side
       const zi = mz - h, zo = mz + h;
       const face = (a0, a1, y0, y1, zz, nz, mat) => sub.poly([[a0, y0, zz], [a1, y0, zz], [a1, y1, zz], [a0, y1, zz]], mat, { n: [0, 0, nz] });
-      face(A0, A1, F, sill, zi, -1, paint); face(A0, wa0, sill, head, zi, -1, paint); face(wa1, A1, sill, head, zi, -1, paint);
+      face(A0, A1, L.BOW.seat, sill, zi, -1, paint); face(A0, wa0, sill, head, zi, -1, paint); face(wa1, A1, sill, head, zi, -1, paint);
       face(A0, A1, head, ceil, zi, -1, paint);
-      face(A0, A1, F - 0.6, F - 0.1, zo, 1, 'vinyl');
-      face(A0, A1, F - 0.1, sill, zo, 1, 'siding'); face(A0, wa0, sill, head, zo, 1, 'siding'); face(wa1, A1, sill, head, zo, 1, 'siding');
+      face(A0, A1, L.BOW.base, sill, zo, 1, 'vinyl');   // white bottom band of the bow unit (0.4 ft)
+      face(A0, wa0, sill, head, zo, 1, 'siding'); face(wa1, A1, sill, head, zo, 1, 'siding');
       face(A0, A1, head, TOP, zo, 1, 'siding');
       sub.poly([[wa0, sill, zi], [wa0, sill, zo], [wa0, head, zo], [wa0, head, zi]], TRIM, { n: [1, 0, 0] });
       sub.poly([[wa1, sill, zi], [wa1, sill, zo], [wa1, head, zo], [wa1, head, zi]], TRIM, { n: [-1, 0, 0] });
-      sub.poly([[wa0, sill, zi], [wa1, sill, zi], [wa1, sill, zo], [wa0, sill, zo]], TRIM, { n: [0, 1, 0] });
+      sub.poly([[wa0, sill, mz - 0.05], [wa1, sill, mz - 0.05], [wa1, sill, zo], [wa0, sill, zo]], TRIM, { n: [0, 1, 0] });   // the stool covers the rest
       sub.poly([[wa0, head, zi], [wa1, head, zi], [wa1, head, zo], [wa0, head, zo]], TRIM, { n: [0, -1, 0] });
       sub.poly([[A0, TOP, zi], [A1, TOP, zi], [A1, TOP, zo], [A0, TOP, zo]], 'siding', { n: [0, 1, 0] });
-      const w = { x0: A0, x1: A1, z0: mz, z1: mz, y: [F - 0.6, TOP], ops: [], t, ext: true };
+      const w = { x0: A0, x1: A1, z0: mz, z1: mz, y: [L.BOW.base, TOP], ops: [], t, ext: true };
       windowUnit(sub, gl, w, {
-        a0: wa0, a1: wa1, b0: sill, b1: head, kind: 'window', inSide: -1,
+        a0: wa0, a1: wa1, b0: sill, b1: head, kind: 'window', inSide: -1, panes: [1],
         cw: [wa0 - i0 - 0.005, i1 - wa1 - 0.005], xw: [first ? 0.16 : p0 + ext, last ? 0.16 : p1 + ext],
       });
       extrude(sub, BASE, [i0 - (first ? 0.1 : 0), F, zi], [1, 0, 0], [0, 0, -1], i1 - i0 + (first ? 0.1 : 0) + (last ? 0.1 : 0), TRIM, { dens: 8 });
@@ -407,16 +552,32 @@ function bowWindow(b, glass) {
 
 // ======================================================= floors & ceilings ===
 function floorsAndCeilings(b, glass) {
-  const noFloor = new Set(['foyer', 'rear', 'stcl']);
-  const noCeil = new Set(['stcl', 'rcl']);
+  const ceilDone = [];                                // flat ceilings so far [y, rect]: later rooms don't repeat them
   for (const r of L.ROOMS) {
-    for (const [x0, x1, z0, z1] of r.rects) {
-      if (!noFloor.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
-      if (noCeil.has(r.id)) continue;
-      const holes = L.SKYLIGHTS.filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
+    for (const [x0, x1, z0r, z1r] of r.rects) {
+      if (!NO_FLOOR.has(r.id)) b.poly([[x0, r.h[0], z0r], [x1, r.h[0], z0r], [x1, r.h[0], z1r], [x0, r.h[0], z1r]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
+      if (NO_CEIL.has(r.id)) continue;
       const cy = z => (r.slope ? L.annexCeil(z) : r.h[1]);
+      // a sloped (annex) ceiling runs between the faces of the walls at its ends, not their centrelines: run on
+      // under a wall it passes up inside it (the wall's top is open) and bakes outdoor light onto the joint
+      const face = (zc, dir) => {
+        const w = r.slope && L.WALLS.find(w2 => { const q = wallInfo(w2); return q.alongX && Math.abs(q.c - zc) < 1e-3 && q.a0 < x1 - 1e-3 && q.a1 > x0 + 1e-3 && w2.y[1] > cy(zc) - 0.2; });
+        if (!w) return zc;
+        const zf = zc + dir * wallInfo(w).t / 2;
+        // an opening whose head stands above the ceiling there (the pantry door): close the slot over it
+        for (const op of w.ops) {
+          const a0 = Math.max(op.a0, x0), a1 = Math.min(op.a1, x1);
+          if (a1 - a0 > 1e-3 && op.b1 > cy(zf) + 1e-3) b.poly([[a0, cy(zf), zf], [a1, cy(zf), zf], [a1, op.b1, zf], [a0, op.b1, zf]], 'ceiling', { n: [0, 0, -dir] });
+        }
+        return zf;
+      };
+      const z0 = face(z0r, 1), z1 = face(z1r, -1);
+      const holes = L.SKYLIGHTS.map(sk => sk.r).filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
       const k = Math.hypot(1, L.ANNEX_SLOPE), cn = r.slope ? [0, -1 / k, L.ANNEX_SLOPE / k] : [0, -1, 0];
-      for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], holes)) {
+      const done = r.slope ? [] : ceilDone.filter(([y]) => Math.abs(y - r.h[1]) < 1e-6).map(([, q]) => q);
+      if (!r.slope) ceilDone.push([r.h[1], [x0, x1, z0, z1]]);
+      for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], [...holes, ...done])) {
+        if (a1 - a0 < 1e-3 || c1 - c0 < 1e-3) continue;
         b.poly([[a0, cy(c0), c0], [a1, cy(c0), c0], [a1, cy(c1), c1], [a0, cy(c1), c1]], 'ceiling', { n: cn, chart: r.slope ? 'slope' : 'ceil' + r.h[1] });
       }
     }
@@ -428,21 +589,32 @@ function floorsAndCeilings(b, glass) {
   }
   // landings, stair-closet floors, the lower-hall ceiling strip under the upper foyer
   const F = L.FRONT, kx = 24.8 + OPEN_W;              // the landing stops at the knee wall's cap beside the bottom flight
-  b.poly([[kx, F, L.FU.z1], [28.8, F, L.FU.z1], [28.8, F, L.FD.z1], [kx, F, L.FD.z1]], 'tileLanding', { n: [0, 1, 0] });
-  b.poly([[20.8, F, L.FD.z1], [28.8, F, L.FD.z1], [28.8, F, 30], [20.8, F, 30]], 'tileLanding', { n: [0, 1, 0] });
-  b.poly([[35, L.MID, -8], [42.2, L.MID, -8], [42.2, L.MID, -4.4], [35, L.MID, -4.4]], 'carpetBeige', { n: [0, 1, 0] });
-  b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, 20], [20.8, L.LOW, 20]], 'carpetBeige', { n: [0, 1, 0] });
-  b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, L.FU.z1], [24.8, L.LOW, L.FU.z1]], 'carpetBeige', { n: [0, 1, 0] });
+  // entry tile: the 18" grid set out from the front door (a grout line on its centreline, a full tile at the sill)
+  const entryUV = pts => pts.map(p => [p[0] - 24.8, -(p[2] - 29.75)]);
+  const landings = [[F, [kx, 28.8, L.FU.z1, L.FD.z1], 'tileEntry'], [F, [20.8, 28.8, L.FD.z1, 30], 'tileEntry'], [L.MID, [35, 42.2, -8, -4.4], 'carpetBeige']];
+  for (const [y, [x0, x1, z0, z1], mat] of landings) {
+    const pts = [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]];
+    b.poly(pts, mat, { n: [0, 1, 0], uv: mat === 'tileEntry' ? entryUV(pts) : undefined });
+  }
+  b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, 29.75], [20.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // under the bottom flight and the landing
+  b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, 29.75], [24.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // stair closet
   b.poly([[20.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 20], [20.8, L.LOW_CEIL, 20]], 'ceiling', { n: [0, -1, 0] });
   // exposed edges of the main floor at the stair openings
   b.poly([[20.8, L.LOW_CEIL - 0.05, 20], [24.8, L.LOW_CEIL - 0.05, 20], [24.8, L.MAIN, 20], [20.8, L.MAIN, 20]], 'paint:' + L.PAINT.tan, { n: [0, 0, 1] });
-  b.poly([[38.9, L.LOW_CEIL, 0], [42.2, L.LOW_CEIL, 0], [42.2, L.MAIN, 0], [38.9, L.MAIN, 0]], 'paint:' + L.PAINT.tan, { n: [0, 0, -1] });
+  // solids: no top face where a floor at that height already covers it (the carpeted MID landings, the pantry
+  // floor): the paint would be coplanar with the floor and z-fight with it
   for (const s of L.SOLIDS) {
-    const [x0, x1, y0, y1, z0, z1] = s.b;
-    b.box(x0, x1, y0, y1, z0, z1, 'paint:' + s.paint, { skip: ['ny'], collide: true, dens: s.ext ? 2 : undefined });
+    const [x0, x1, y0, y1, z0, z1] = s.b, side = s.mat || 'paint:' + s.paint, mat = s.top || side, dens = s.ext ? 2 : undefined;
+    b.box(x0, x1, y0, y1, z0, z1, side, { skip: ['ny', 'py'], collide: true, dens });
+    const cover = [...floorRectsAt(y1), ...landings.filter(([y]) => Math.abs(y - y1) < 1e-6).map(([, q]) => q)];
+    for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], cover)) {
+      if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) b.poly([[a0, y1, c0], [a0, y1, c1], [a1, y1, c1], [a1, y1, c0]], mat, { n: [0, 1, 0], dens });
+    }
   }
   // skylight wells up through the roof, glazed at the top of a curb
-  for (const [x0, x1, z0, z1] of L.SKYLIGHTS) {
+  for (const sk of L.SKYLIGHTS) {
+    if (sk.lean) { leaningShaft(b, glass, sk); continue; }
+    const [x0, x1, z0, z1] = sk.r;
     const inAnnex = x0 >= 35 && x1 <= 45 && z0 >= -8 && z1 <= 0;           // well starts at the sloped ceiling there
     const ya = inAnnex ? L.annexCeil(z0) : L.MAIN_CEIL, yb = inAnnex ? L.annexCeil(z1) : L.MAIN_CEIL;
     const y1 = Math.max(roofUnder(x0, z0), roofUnder(x1, z1), roofUnder(x0, z1), roofUnder(x1, z0)) + 0.35;
@@ -458,6 +630,36 @@ function floorsAndCeilings(b, glass) {
     ]) b.poly(pts, 'vinyl', { n, dens: 3 });
     glass.push({ pts: [[x0, y1 + 0.25, z0], [x1, y1 + 0.25, z0], [x1, y1 + 0.25, z1], [x0, y1 + 0.25, z1]], n: [0, -1, 0] });
   }
+}
+// A skylight whose shaft leans toward the back of the house: the glazing lies in the roof plane, its
+// south edge straight above the ceiling opening's north edge, running `len` up the roof toward the north.
+// Returns the ceiling opening r, the glass footprint and top(z) = height of the shaft's top edge.
+function skylightShaft(sk) {
+  const [x0, x1, z0, z1] = sk.r, [gx0, gx1] = sk.lean.glass, xm = (gx0 + gx1) / 2;
+  const top = z => roofUnder(xm, z) + 0.35;
+  const k = (roofUnder(xm, z0 + 0.5) - roofUnder(xm, z0 - 0.5));          // roof rise per foot toward the south
+  const gz1 = z0, gz0 = gz1 - sk.lean.len / Math.hypot(1, k);
+  // south face: from the opening's south edge up to the glass's south edge (a third of the way up: the can)
+  const south = { bot: [(x0 + x1) / 2, L.MAIN_CEIL, z1], top: [xm, top(gz1), gz1] };
+  return { r: sk.r, glass: [gx0, gx1, gz0, gz1], top, south };
+}
+function leaningShaft(b, glass, sk) {
+  const [x0, x1, z0, z1] = sk.r, { glass: [gx0, gx1, gz0, gz1], top } = skylightShaft(sk), C = L.MAIN_CEIL;
+  const ts = top(gz1), tn = top(gz0);
+  b.poly([[x0, C, z1], [x1, C, z1], [gx1, ts, gz1], [gx0, ts, gz1]], 'ceiling', { n: [0, -(ts - C), -(z1 - gz1)] });   // south face (overhangs, faces down-north)
+  b.poly([[x0, C, z0], [x1, C, z0], [gx1, tn, gz0], [gx0, tn, gz0]], 'ceiling', { n: [0, z0 - gz0, tn - C] });          // north face (faces up-south)
+  // east / west faces taper from the opening's width to the glass's: two triangles each (not planar as quads)
+  for (const [xa, xg, s] of [[x0, gx0, 1], [x1, gx1, -1]]) {
+    b.poly([[xa, C, z0], [xa, C, z1], [xg, ts, gz1]], 'ceiling', { n: [s, 0, 0] });
+    b.poly([[xa, C, z0], [xg, ts, gz1], [xg, tn, gz0]], 'ceiling', { n: [s, 0, 0] });
+  }
+  // vinyl curb round the glass, following the roof slope (from the roof's underside up past the glass)
+  const cx0 = gx0 - 0.2, cx1 = gx1 + 0.2, cz0 = gz0 - 0.2, cz1 = gz1 + 0.2, lo = z => roofUnder((gx0 + gx1) / 2, z), hi = z => top(z) + 0.3;
+  b.poly([[cx0, lo(cz0), cz0], [cx1, lo(cz0), cz0], [cx1, hi(cz0), cz0], [cx0, hi(cz0), cz0]], 'vinyl', { n: [0, 0, -1], dens: 3 });
+  b.poly([[cx0, lo(cz1), cz1], [cx1, lo(cz1), cz1], [cx1, hi(cz1), cz1], [cx0, hi(cz1), cz1]], 'vinyl', { n: [0, 0, 1], dens: 3 });
+  for (const [x, s] of [[cx0, -1], [cx1, 1]]) b.poly([[x, lo(cz0), cz0], [x, lo(cz1), cz1], [x, hi(cz1), cz1], [x, hi(cz0), cz0]], 'vinyl', { n: [s, 0, 0], dens: 3 });
+  const yg = z => top(z) + 0.25, k = (yg(gz1) - yg(gz0)) / (gz1 - gz0), gn = [0, -1, k], l = Math.hypot(...gn);
+  glass.push({ pts: [[gx0, yg(gz0), gz0], [gx1, yg(gz0), gz0], [gx1, yg(gz1), gz1], [gx0, yg(gz1), gz1]], n: gn.map(v => v / l) });
 }
 function rectMinus([x0, x1, z0, z1], holes) {
   let rects = [[x0, x1, z0, z1]];
@@ -503,7 +705,8 @@ function moldings(b) {
   for (const r of L.ROOMS) {
     if (['rear', 'stcl', 'rcl'].includes(r.id)) continue;
     const crownOnly = r.id === 'foyer';            // two-storey entry: crown at its ceiling only
-    const list = crownOnly ? [...r.crownRects.map(q => [q, 'crown']), ...r.baseRects.map(q => [q, 'base'])] : r.rects.map(q => [q, 'all']);
+    const list = crownOnly ? [...r.crownRects.map(q => [q, 'crown']), ...r.baseRects.map(q => [q, 'base'])]
+      : [...r.rects.map(q => [q, 'all']), ...(r.crownRects || []).map(q => [q, 'crown'])];   // extra crown runs (a header inside the room)
     for (const [[x0, x1, z0, z1], kind] of list) {
       const edges = [['x', z0, x0, x1, 1], ['x', z1, x0, x1, -1], ['z', x0, z0, z1, 1], ['z', x1, z0, z1, -1]];
       for (const [ax, c, e0, e1, s] of edges) {
@@ -513,13 +716,16 @@ function moldings(b) {
           const lo = Math.max(e0, wi.a0), hi = Math.min(e1, wi.a1);
           if (hi - lo < 0.05) continue;
           const face = wi.c + s * wi.t / 2;
-          const run = (y, profile, casingGap, pad) => {
+          // draw = false: only work out the runs (baseboard and chair rail are drawn by wallTrim(), which
+          // follows the outline of the walls round outside corners and through uncased openings)
+          const run = (y, profile, casingGap, pad, draw = true) => {
             if (y < w.y[0] - EPS || y > w.y[1] + EPS) return;
             if (profile === BASE && w.y[1] < y + 0.6) return;      // wall stops at the floor (under a railing): no baseboard
             let segs = [[lo, hi]];
             for (const op of w.ops) {
               if (op.b0 - 0.05 <= y + pad && op.b1 + 0.05 >= y - pad) segs = subtract(segs, op.a0 - casingGap, op.a1 + casingGap);
             }
+            if (!draw) return segs;
             for (let [a, bb] of segs) {
               if (bb - a < 0.05) continue;
               let m0 = 0, m1 = 0;
@@ -537,8 +743,8 @@ function moldings(b) {
             return segs;
           };
           if (kind === 'crown') { run(r.h[1], CROWN, 0, 0.3); continue; }
-          if (kind === 'base') { run(r.baseY, BASE, 0.29, 0.3); continue; }
-          const segs = run(r.h[0], BASE, 0.29, 0.3) || [];
+          if (kind === 'base') continue;
+          const segs = run(r.h[0], BASE, 0.29, 0.3, false) || [];
           // duplex outlets along the walls (not in closets)
           if (!/closet/i.test(r.name) && r.id !== 'util') {
             for (const [a, bb] of segs) {
@@ -551,25 +757,141 @@ function moldings(b) {
             }
           }
           if (r.crown) run(r.h[1], CROWN, 0, 0.3);
-          if (r.rail) run(r.h[0] + r.rail, RAIL, 0.29, 0.15);
         }
+      }
+    }
+  }
+  // baseboard at each floor level, chair rail where a room has one
+  const skip = new Set(['rear', 'stcl', 'rcl']);
+  const levels = new Set(L.ROOMS.filter(r => !skip.has(r.id)).map(r => r.baseY ?? r.h[0]));
+  const inRects = (rects, x, z) => rects.some(([x0, x1, z0, z1]) => x >= x0 - EPS && x <= x1 + EPS && z >= z0 - EPS && z <= z1 + EPS);
+  for (const y of levels) {
+    wallTrim(b, BASE, y, 0.3, (r, x, z) => !skip.has(r.id) && !(r.bay && inRects([r.bay], x, z))
+      && (r.baseY !== undefined ? Math.abs(r.baseY - y) < EPS && inRects(r.baseRects, x, z) : Math.abs(r.h[0] - y) < EPS));
+  }
+  for (const r of L.ROOMS.filter(q => q.rail)) wallTrim(b, RAIL, r.h[0] + r.rail, 0.15, q => q === r);
+}
+
+// Baseboard / chair rail following the plan outline of the walls at height y: the wall footprints there
+// (less the openings that reach that height) are merged, and the profile runs along every edge of the
+// outline that faces a room `has(room, x, z)` accepts. Round an outside corner (a wall end, a pier)
+// the runs are mitred and carry on along the end face; through a plain drywall-wrapped opening they
+// wrap the jambs; beside cased openings (doors, windows, the pass-through) they stop at the casing.
+function wallTrim(b, profile, y, pad, has) {
+  const GAP = 0.29;
+  // how the trim treats each opening: 'wrap' (plain drywall-wrapped: round the jambs), 'cased' (stop at
+  // the casing) or 'none' (an opening the whole length of its wall, like the bow window's header)
+  const treat = (op, l) => (op.kind !== 'open' || op.passThrough || op.garageDoor ? 'cased' : op.a0 <= l.a0 + 1e-6 && op.a1 >= l.a1 - 1e-6 ? 'none' : 'wrap');
+  const rects = [];                  // footprints [x0, x1, z0, z1]
+  const lines = [];                  // wall lines with their ops, to find casings and jambs
+  for (const w of L.WALLS) {
+    if (y < w.y[0] - 0.05 || w.y[1] < y + 0.6) continue;      // wall absent here, or it stops at the floor (under a railing)
+    const { alongX, t, c, a0, a1 } = wallInfo(w);
+    const ops = w.ops.filter(op => op.b0 - 0.05 <= y + pad && op.b1 + 0.05 >= y - pad);
+    lines.push({ alongX, t, c, a0, a1, ops });
+    const p0 = joinedAt(w, a0, -1, y, y + 0.6) ? a0 - 0.01 : a0 - t / 2, p1 = joinedAt(w, a1, 1, y, y + 0.6) ? a1 + 0.01 : a1 + t / 2;
+    let segs = [[p0, p1]];
+    for (const op of ops) segs = subtract(segs, op.a0, op.a1);
+    for (const [s0, s1] of segs) if (s1 - s0 > 1e-3) rects.push(alongX ? [s0, s1, c - t / 2, c + t / 2] : [c - t / 2, c + t / 2, s0, s1]);
+  }
+  // cell grid over all the rect bounds; a cell is solid if a footprint covers it
+  const snap = v => Math.round(v * 1000) / 1000;
+  const xs = [...new Set(rects.flatMap(r => [snap(r[0]), snap(r[1])]))].sort((p, q) => p - q);
+  const zs = [...new Set(rects.flatMap(r => [snap(r[2]), snap(r[3])]))].sort((p, q) => p - q);
+  const nx = xs.length - 1, nz = zs.length - 1, solid = new Uint8Array(nx * nz);
+  const xi = new Map(xs.map((v, i) => [v, i])), zi = new Map(zs.map((v, i) => [v, i]));
+  for (const r of rects) {
+    for (let i = xi.get(snap(r[0])); i < xi.get(snap(r[1])); i++) for (let j = zi.get(snap(r[2])); j < zi.get(snap(r[3])); j++) solid[i * nz + j] = 1;
+  }
+  const S = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && solid[i * nz + j] === 1;
+  const solidAt = (x, z) => {
+    let i = 0, j = 0;
+    while (i < nx && xs[i + 1] <= x) i++;
+    while (j < nz && zs[j + 1] <= z) j++;
+    return x > xs[0] && z > zs[0] && x < xs[nx] && z < zs[nz] && S(i, j);
+  };
+  // boundary edges, merged into maximal straight runs: [alongX, c, a0, a1, n] (n = ±1: the room side)
+  const edges = [];
+  for (let j = 0; j <= nz; j++) for (const n of [-1, 1]) {       // edges along x at z = zs[j]
+    let start = null;
+    for (let i = 0; i <= nx; i++) {
+      const on = i < nx && (n > 0 ? S(i, j - 1) && !S(i, j) : S(i, j) && !S(i, j - 1));
+      if (on && start === null) start = i;
+      if (!on && start !== null) { edges.push([true, zs[j], xs[start], xs[i], n]); start = null; }
+    }
+  }
+  for (let i = 0; i <= nx; i++) for (const n of [-1, 1]) {       // edges along z at x = xs[i]
+    let start = null;
+    for (let j = 0; j <= nz; j++) {
+      const on = j < nz && (n > 0 ? S(i - 1, j) && !S(i, j) : S(i, j) && !S(i - 1, j));
+      if (on && start === null) start = j;
+      if (!on && start !== null) { edges.push([false, xs[i], zs[start], zs[j], n]); start = null; }
+    }
+  }
+  const P = (alongX, c, a) => (alongX ? [a, c] : [c, a]);
+  for (const [alongX, c, e0, e1, n] of edges) {
+    // a jamb of a cased opening (door, window, pass-through): the casing covers it
+    const atEdge = op => Math.abs(op.a0 - c) < 0.02 || Math.abs(op.a1 - c) < 0.02;
+    const jamb = lines.find(l => l.alongX !== alongX && e0 >= l.c - l.t / 2 - 0.02 && e1 <= l.c + l.t / 2 + 0.02 && l.ops.some(atEdge));
+    if (jamb && !jamb.ops.some(op => atEdge(op) && treat(op, jamb) === 'wrap')) continue;
+    // split where the room in front changes between trimmed / not trimmed, then cut round the casings
+    let segs = [], cur = null;
+    for (let a = e0; a < e1 - 1e-6; a = Math.min(e1, a + 0.1)) {
+      const m = Math.min(e1, a + 0.1), [px, pz] = P(alongX, c + n * 0.3, (a + m) / 2);
+      const r = roomAt(px, pz, y + 1), ok = !!r && has(r, px, pz);
+      if (ok && !cur) { cur = [a, m]; segs.push(cur); } else if (ok) cur[1] = m; else cur = null;
+    }
+    for (const l of lines) {
+      if (l.alongX !== alongX || Math.abs(Math.abs(l.c - c) - l.t / 2) > 0.02) continue;
+      for (const op of l.ops) if (treat(op, l) === 'cased') segs = subtract(segs, op.a0 - GAP, op.a1 + GAP);
+    }
+    // outside corner at an end of the edge: the solid stops just past it → mitre
+    const convex = (a, dir) => {
+      const [qx, qz] = P(alongX, c + n * 0.01, a + dir * 0.01), [rx, rz] = P(alongX, c - n * 0.01, a + dir * 0.01);
+      return !solidAt(qx, qz) && !solidAt(rx, rz);
+    };
+    // inside corner: the solid carries on across the face line just past the end (the end is buried)
+    const concave = (a, dir) => { const [qx, qz] = P(alongX, c + n * 0.01, a + dir * 0.01); return solidAt(qx, qz); };
+    for (const [a, bb] of segs) {
+      if (bb - a < 0.05) continue;
+      const m0 = Math.abs(a - e0) < 1e-6 && convex(e0, -1) ? 1 : 0, m1 = Math.abs(bb - e1) < 1e-6 && convex(e1, 1) ? 1 : 0;
+      const origin = alongX ? [a, y, c] : [c, y, a];
+      extrude(b, profile, origin, alongX ? [1, 0, 0] : [0, 0, 1], alongX ? [0, 0, n] : [n, 0, 0], bb - a, TRIM, { dens: 8, m0, m1 });
+      // square ends that show (the room changes, a casing gap) get the profile as an end cap
+      for (const [e, dir, m] of [[a, -1, m0], [bb, 1, m1]]) {
+        if (m || concave(e, dir)) continue;
+        const loop = [...(profile[0][0] ? [[0, profile[0][1]]] : []), ...profile, ...(profile[profile.length - 1][0] ? [[0, profile[profile.length - 1][1]]] : [])];   // closed on the wall
+        const pts = loop.map(([o, u]) => (alongX ? [e, y + u, c + n * o] : [c + n * o, y + u, e]));
+        b.poly(pts, TRIM, { n: alongX ? [dir, 0, 0] : [0, 0, dir], dens: 8 });
       }
     }
   }
 }
 
-// Light-switch plates beside each room door, on the latch side, on the side the door swings into.
+// Light-switch plates beside each room door, on the side the door swings into: on the latch side just past
+// the casing (a door with sidelights: past the whole unit's casing), failing that on the hinge side, and only
+// where the plate sits whole on a wall face at that height, clear of openings, casings and furniture.
 function switchPlates(b) {
   for (const d of L.DOORS) {
     if (/closet/i.test(d.name) || d.group !== d.id) continue;
-    const latch = d.hinge ? d.a0 - 0.29 - 0.3 : d.a1 + 0.29 + 0.3;
-    const w =L.WALLS.find(w2 => { const wi = wallInfo(w2); return (d.axis === 'x') === wi.alongX && Math.abs(wi.c - d.c) < 0.01 && latch > wi.a0 && latch < wi.a1; });
-    if (!w) continue;
-    const wi = wallInfo(w);
-    const s = d.swing, face = d.c + s * wi.t / 2, y = d.base + 4.0;
-    const o0 = face, o1 = face + s * 0.025;
-    if (d.axis === 'x') b.mbox(latch - 0.12, latch + 0.12, y - 0.19, y + 0.19, Math.min(o0, o1), Math.max(o0, o1), 'plate');
-    else b.mbox(Math.min(o0, o1), Math.max(o0, o1), y - 0.19, y + 0.19, latch - 0.12, latch + 0.12, 'plate');
+    const alongX = d.axis === 'x', y = d.base + 4.0;
+    const onLine = w2 => { const q = wallInfo(w2); return q.alongX === alongX && Math.abs(q.c - d.c) < 0.01; };
+    const op = L.WALLS.filter(onLine).flatMap(w2 => w2.ops).find(o => o.kind === 'door' && Math.abs(o.a0 - d.a0) < 0.01);
+    const [u0, u1] = op?.unit || [d.a0, d.a1], cw = op?.unit ? 0.33 : 0.29;
+    for (const a of d.hinge ? [u0 - cw - 0.3, u1 + cw + 0.3] : [u1 + cw + 0.3, u0 - cw - 0.3]) {
+      const w = L.WALLS.find(w2 => { const q = wallInfo(w2); return onLine(w2) && a - 0.12 >= q.a0 && a + 0.12 <= q.a1 && w2.y[0] <= y - 0.19 && w2.y[1] >= y + 0.19; });
+      if (!w) continue;
+      const clear = w.ops.every(o => {
+        const [o0, o1] = o.unit || [o.a0, o.a1], g = o.unit ? 0.33 : 0.29;
+        return a + 0.12 <= o0 - g || a - 0.12 >= o1 + g || y + 0.19 <= o.b0 - 0.4 || y - 0.19 >= o.b1 + 0.4;
+      });
+      const s = d.swing, face = d.c + s * wallInfo(w).t / 2, [fx, fz] = alongX ? [a, face + s * 0.15] : [face + s * 0.15, a];
+      if (!clear || b.boxes.some(k => fx > k.x0 && fx < k.x1 && fz > k.z0 && fz < k.z1 && y > k.y0 && y < k.y1)) continue;
+      const o0 = face, o1 = face + s * 0.025;
+      if (alongX) b.mbox(a - 0.12, a + 0.12, y - 0.19, y + 0.19, Math.min(o0, o1), Math.max(o0, o1), 'plate');
+      else b.mbox(Math.min(o0, o1), Math.max(o0, o1), y - 0.19, y + 0.19, a - 0.12, a + 0.12, 'plate');
+      break;
+    }
   }
 }
 
@@ -578,6 +900,7 @@ function switchPlates(b) {
 const SOFFITS = {
   frontUp: z => L.FRONT - 0.7 + (L.FU.z1 - z) / (L.FU.z1 - L.FU.z0) * (L.MAIN - 1.25 - (L.FRONT - 0.7)),
   rearUp: z => L.MID - 0.7 + (z + 4.4) / 4.4 * (L.MAIN - 1.25 - (L.MID - 0.7)),
+  frontDown: z => L.LOW + (z - L.FD.z0 - 1.6) * (L.FRONT - L.LOW) / (L.FD.z1 - L.FD.z0),   // meets the floor under the third step
 };
 // Steps of a flight: tread top, z extent and the edge toward the high end.
 function flightSteps(f) {
@@ -592,6 +915,20 @@ function flightSteps(f) {
   return out;
 }
 const OPEN_W = 0.2;   // knee wall half-thickness the open side of a flight runs over
+// Plan rects [x0,x1,z0,z1] of the room floors and stair treads whose top is at height y.
+function floorRectsAt(y) {
+  const out = [];
+  for (const r of L.ROOMS) if (!NO_FLOOR.has(r.id) && Math.abs(r.h[0] - y) < 1e-6) out.push(...r.rects);
+  for (const f of L.FLIGHTS) {
+    const x0 = f.r[0] - (f.open < 0 ? OPEN_W + 0.05 : 0), x1 = f.r[1] + (f.open > 0 ? OPEN_W + 0.05 : 0);
+    for (const s of flightSteps(f)) {
+      if (Math.abs(s.top - y) > 1e-6) continue;
+      const nose = f.finish === 'carpet' ? 0 : s.upper === s.zb ? -0.09 : 0.09, zf = s.upper === s.zb ? s.za : s.zb;   // (carpet: no overhang)
+      out.push([x0, x1, Math.min(s.za, zf + nose), Math.max(s.zb, zf + nose)]);
+    }
+  }
+  return out;
+}
 
 function stairs(b) {
   for (const f of L.FLIGHTS) {
@@ -601,25 +938,46 @@ function stairs(b) {
     const n = f.risers, rise = (hi - lo) / n, d = (z1 - z0) / n;
     const upAtZ1 = f.h1 > f.h0;
     const soffit = SOFFITS[f.id];
-    const riserMat = f.finish === 'oak' ? TRIM : f.finish === 'carpet' ? 'carpetBeige' : 'stone';
-    const treadMat = f.finish === 'oak' ? 'oakTread' : riserMat;
+    // outside steps: ledgestone risers under bluestone treads
+    const riserMat = f.finish === 'oak' ? TRIM : f.finish === 'carpet' ? 'carpetBeige' : 'ledgestone';
+    const treadMat = f.finish === 'oak' ? 'oakTread' : f.finish === 'stone' ? 'bluestone' : riserMat;
     for (let k = 1; k <= n; k++) {
       const top = lo + k * rise;
       const za = upAtZ1 ? z0 + (k - 1) * d : z1 - k * d;
       const zb = za + d;
       const nose = upAtZ1 ? -0.09 : 0.09;          // nosing overhangs toward the low end
       const zFront = upAtZ1 ? za : zb;
-      const base = soffit ? soffit(upAtZ1 ? zb : za) : 0;
-      b.box(x0, x1, base, top - 0.09, Math.min(za, zb), Math.max(za, zb), riserMat, { skip: ['ny', 'py'], dens: 6 });
+      const base = soffit ? Math.max(0, soffit(upAtZ1 ? zb : za)) : 0;
+      const front = upAtZ1 ? 'nz' : 'pz', back = upAtZ1 ? 'pz' : 'nz';
+      if (f.finish === 'carpet') {
+        // waterfall carpet: one block per step, its front a single carpet face from the step below up to its
+        // tread and the tread from the riser line back (no overhang). The
+        // back, the underside and the ends (in the walls / knee wall) are hidden.
+        b.box(x0, x1, base, top, Math.min(za, zb), Math.max(za, zb), treadMat, { skip: ['ny', back, 'nx', 'px'], dens: 7 });   // no bevel: a bevel strip is too thin for its own lightmap and bakes black
+        continue;
+      }
+      // the bottom steps of a stoop flare out (f.flare: extra width [west, east] from the bottom step up)
+      const [fw, fe] = f.flare?.[k - 1] || [0, 0], sx0 = x0 - fw, sx1 = x1 + fe;
+      b.box(sx0, sx1, base, top - 0.09, Math.min(za, zb), Math.max(za, zb), riserMat, { skip: ['ny', 'py'], dens: 6 });
+      // the nose's front face is only 0.09 tall: lightmapped, its texels land mostly inside the riser block
+      // below and bake black, so the lip is drawn probe-lit instead and the tread box has no front face
+      const sg = Math.sign(nose);
       const t0 = Math.min(za, zb, zFront + nose), t1 = Math.max(za, zb, zFront + nose);
       // open side: tread ends run 0.05 past the stringer and show their end grain
-      const tx0 = x0 - (f.open < 0 ? 0.05 : 0), tx1 = x1 + (f.open > 0 ? 0.05 : 0);
-      const tSkip = ['ny', ...(f.open < 0 ? [] : ['nx']), ...(f.open > 0 ? [] : ['px'])];
+      const tx0 = sx0 - (f.open < 0 ? 0.05 : 0), tx1 = sx1 + (f.open > 0 ? 0.05 : 0);
+      const lip = f.finish === 'oak';                           // (the exterior stone stoops keep a plain box)
+      const tSkip = ['ny', ...(lip ? [front] : []), ...(f.open < 0 || f.exterior ? [] : ['nx']), ...(f.open > 0 || f.exterior ? [] : ['px'])];
       b.box(tx0, tx1, top - 0.09, top, t0, t1, treadMat, { skip: tSkip, dens: 7, uv: f.finish === 'oak' ? 'face' : undefined, bevel: 0.035 });
+      if (lip) {
+        const zn = zFront + nose;
+        b.mbox(tx0, tx1, top - 0.09, top, Math.min(zn, zn - sg * 0.02), Math.max(zn, zn - sg * 0.02), treadMat);
+      }
     }
     if (soffit) {
-      const zLow = upAtZ1 ? z0 : z1, zHigh = upAtZ1 ? z1 : z0;
-      b.poly([[fx0, soffit(zLow), zLow], [fx1, soffit(zLow), zLow], [fx1, soffit(zHigh), zHigh], [fx0, soffit(zHigh), zHigh]], 'paint:' + L.PAINT.closet, { n: [0, -1, 0] });
+      let zLow = upAtZ1 ? z0 : z1;
+      const zHigh = upAtZ1 ? z1 : z0;
+      if (soffit(zLow) < 0) zLow += (zHigh - zLow) * -soffit(zLow) / (soffit(zHigh) - soffit(zLow));   // from where it meets the floor
+      b.poly([[fx0, soffit(zLow), zLow], [fx1, soffit(zLow), zLow], [fx1, soffit(zHigh), zHigh], [fx0, soffit(zHigh), zHigh]], 'paint:' + (f.under || L.PAINT.closet), { n: [0, -1, 0] });
     }
   }
   // knee walls under the open side of a flight: the wall stops under each riser block (the treads
@@ -649,27 +1007,45 @@ function stairs(b) {
     const fl = L.FLIGHTS.find(f => f.id === k.flight);
     const soff = SOFFITS[fl.id];
     const lo = Math.min(fl.h0, fl.h1), hi = Math.max(fl.h0, fl.h1), hiZ = fl.h0 > fl.h1 ? fl.r[2] : fl.r[3];
-    const segs = flightSteps(fl).map(s => ({ za: s.za, zb: s.zb, top: soff(s.upper), band: true }));
+    let segs = flightSteps(fl).map(s => ({ za: s.za, zb: s.zb, top: soff(s.upper), band: true }));
     if (k.z0 < fl.r[2] - 1e-6) segs.push({ za: k.z0, zb: fl.r[2], top: Math.abs(fl.r[2] - hiZ) < 1e-6 ? hi : lo, cap: true });
     if (k.z1 > fl.r[3] + 1e-6) segs.push({ za: fl.r[3], zb: k.z1, top: Math.abs(fl.r[3] - hiZ) < 1e-6 ? hi : lo, cap: true });
-    const T = OPEN_W;
+    const T = OPEN_W, h = k.hole;
+    // an opening under the wall from h.z0 on: its top edge is the underside of the flight next to it
+    // (h.under), and it doesn't close again; only the part above that flight's soffit stays
+    const hb = h ? z => Math.max(0, SOFFITS[h.under](z)) : null;
+    const bot = h ? (g, z) => (g.za >= h.z0 - 1e-6 && g.zb <= h.z1 + 1e-6 ? hb(z) : 0) : () => 0;
+    if (h) for (const zc of [h.z0, h.z1]) segs = segs.flatMap(g => (zc > g.za + 1e-6 && zc < g.zb - 1e-6 ? [{ ...g, zb: zc }, { ...g, za: zc }] : [g]));
     for (const s of [-1, 1]) {
       const x = k.x + s * T;
       for (const g of segs) {
         const r = roomAt(x + s * 0.3, (g.za + g.zb) / 2, 1);
-        const paint = paintFor(r, 1);
+        const paint = paintFor(r, 1), ba = bot(g, g.za), bb = bot(g, g.zb);
         if (g.band && s === fl.open) {
           const ya = Math.min(soff(g.za) - 0.6, g.top), yb = Math.min(soff(g.zb) - 0.6, g.top);
-          b.poly([[x, 0, g.za], [x, 0, g.zb], [x, yb, g.zb], [x, ya, g.za]], paint, { n: [s, 0, 0] });
+          b.poly([[x, ba, g.za], [x, bb, g.zb], [x, yb, g.zb], [x, ya, g.za]], paint, { n: [s, 0, 0] });
           b.poly([[x, ya, g.za], [x, yb, g.zb], [x, g.top, g.zb], [x, g.top, g.za]], TRIM, { n: [s, 0, 0] });
         } else {
-          b.poly([[x, 0, g.za], [x, 0, g.zb], [x, g.top, g.zb], [x, g.top, g.za]], paint, { n: [s, 0, 0] });
+          b.poly([[x, ba, g.za], [x, bb, g.zb], [x, g.top, g.zb], [x, g.top, g.za]], paint, { n: [s, 0, 0] });
         }
       }
     }
+    if (h) {
+      // the opening's jamb at h.z0, the wall's sloped underside along the flight, and the wall's end at k.z1
+      const mat = paintFor(roomAt(k.x + 0.5, (h.z0 + h.z1) / 2, 1), 1), y0 = hb(h.z0), y1 = hb(h.z1);
+      const k0 = (y1 - y0) / (h.z1 - h.z0), endTop = segs.find(g => Math.abs(g.zb - k.z1) < 1e-6)?.top ?? y1;
+      if (y0 > 1e-3) b.poly([[k.x - T, 0, h.z0], [k.x + T, 0, h.z0], [k.x + T, y0, h.z0], [k.x - T, y0, h.z0]], mat, { n: [0, 0, 1] });
+      b.poly([[k.x - T, y0, h.z0], [k.x + T, y0, h.z0], [k.x + T, y1, h.z1], [k.x - T, y1, h.z1]], mat, { n: [0, -1, k0] });
+      if (h.z1 >= k.z1 - 1e-6) b.poly([[k.x - T, y1, k.z1], [k.x + T, y1, k.z1], [k.x + T, endTop, k.z1], [k.x - T, endTop, k.z1]], mat, { n: [0, 0, 1] });
+    }
     for (const g of segs) {
-      if (g.cap) b.poly([[k.x - T, g.top, g.za], [k.x + T, g.top, g.za], [k.x + T, g.top, g.zb], [k.x - T, g.top, g.zb]], TRIM, { n: [0, 1, 0] });
-      b.collider(k.x - T, k.x + T, 0, g.top, g.za, g.zb);
+      // cap, except where a floor or a tread at the same height already runs over the wall (coplanar)
+      if (g.cap) {
+        for (const [a0, a1, c0, c1] of rectMinus([k.x - T, k.x + T, g.za, g.zb], floorRectsAt(g.top))) {
+          if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) b.poly([[a0, g.top, c0], [a1, g.top, c0], [a1, g.top, c1], [a0, g.top, c1]], TRIM, { n: [0, 1, 0] });
+        }
+      }
+      b.collider(k.x - T, k.x + T, Math.min(bot(g, g.za), bot(g, g.zb)), g.top, g.za, g.zb);
     }
   }
   // skirt boards along the stair walls
@@ -715,6 +1091,42 @@ function beam(b, p0, p1, w, h, mat, o = {}) {
   b.mesh(g, mat, o);
 }
 
+// Box newel (0.46 square): plain plinth with a cap moulding, a shaft with a recessed panel framed on all
+// four faces, a collar at the rail, a plain upper block, a cap plate and a cushion block on top.
+// half ('x+' | 'x-' | 'z+' | 'z-'): a half newel where the rail dies into a wall on that side: the post split
+// down its centre plane, (x, z) on the wall face, full width along the wall and half depth out from it, no
+// panel on the cut face.
+function newelPost(b, x, z, y0, railTop, half) {
+  if (half && half !== 'z+') return rotated(b, x, z, { 'x+': Math.PI / 2, 'z-': Math.PI, 'x-': -Math.PI / 2 }[half], sub => newelPost(sub, x, z, y0, railTop, 'z+'));
+  const zb = h => (half ? z : z + h), back = half ? ['pz'] : [];                     // (built with the wall at +z)
+  const sq = (h, ya, yb, o = {}) => b.box(x - h, x + h, ya, yb, z - h, zb(h), TRIM, { dens: 8, ...o, skip: [...(o.skip || []), ...back] });
+  const mould = (h, ya, yb) => b.mbox(x - h, x + h, ya, yb, z - h, zb(h), TRIM);
+  sq(0.23, y0, y0 + 0.9, { skip: ['ny', 'py'] });                                    // plinth
+  mould(0.245, y0 + 0.9, y0 + 0.925); mould(0.26, y0 + 0.925, y0 + 0.95);             // plinth cap
+  const s0 = y0 + 0.95, s1 = railTop - 0.05;
+  sq(0.215, s0, railTop, { skip: ['ny', 'py'] });                                    // core: the panels, 0.015 back
+  for (const sx of [-1, 1]) for (const sz of half ? [-1] : [-1, 1]) {               // corner stiles
+    const cx = x + sx * 0.1875, cz = z + sz * 0.1875;
+    b.box(cx - 0.0425, cx + 0.0425, s0, s1, cz - 0.0425, cz + 0.0425, TRIM, { skip: ['ny', 'py'], dens: 8 });
+  }
+  if (half) for (const sx of [-1, 1]) b.box(x + sx * 0.1875 - 0.0425, x + sx * 0.1875 + 0.0425, s0, s1, z - 0.0425, z, TRIM, { skip: ['ny', 'py', 'pz'], dens: 8 });   // stiles on the wall
+  for (const [ya, yb] of [[s0, s0 + 0.07], [s1 - 0.07, s1]]) {                        // top and bottom rails
+    b.mbox(x - 0.23, x + 0.23, ya, yb, z - 0.145, zb(0.145), TRIM);
+    b.mbox(x - 0.145, x + 0.145, ya, yb, z - 0.23, zb(0.23), TRIM);
+  }
+  mould(0.26, railTop, railTop + 0.07);                                               // collar
+  sq(0.23, railTop + 0.07, railTop + 0.47, { skip: ['ny', 'py'] });                  // upper block
+  sq(0.31, railTop + 0.47, railTop + 0.54, { bevel: 0.02 });                          // cap plate
+  const sh = new THREE.Shape(), y1 = half ? 0.07 : -0.12;                            // cushion: 0.38 square, rounded
+  sh.moveTo(-0.12, y1); sh.lineTo(0.12, y1); sh.lineTo(0.12, 0.12); sh.lineTo(-0.12, 0.12); sh.lineTo(-0.12, y1);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.07, bevelSegments: 4 });
+  g.rotateX(-Math.PI / 2);
+  g.computeBoundingBox();
+  g.translate(0, -g.boundingBox.min.y, 0);
+  b.prim(g, TRIM, x, railTop + 0.54, z);
+  b.collider(x - 0.23, x + 0.23, y0, railTop + 0.72, z - 0.23, zb(0.23));
+}
+
 function railings(b) {
   for (const r of L.RAILINGS) {
     const len = Math.hypot(r.x1 - r.x0, r.z1 - r.z0);
@@ -741,12 +1153,9 @@ function railings(b) {
         b.mbox(p[0] - 0.055, p[0] + 0.055, p[1] + (sloped ? 0 : 0.16), p[1] + r.h - 0.08, p[2] - 0.055, p[2] + 0.055, TRIM);
       }
     }
-    for (const nt of r.newels) {
-      const p = at(nt);
-      const baseY = r.newelBase ? r.newelBase(nt) : sloped ? p[1] - 0.12 : r.base(nt);
-      const s = 0.23;
-      b.box(p[0] - s, p[0] + s, baseY, p[1] + r.h + 0.35, p[2] - s, p[2] + s, TRIM, { skip: ['ny'], dens: 8, bevel: 0.02 });
-      b.box(p[0] - s - 0.05, p[0] + s + 0.05, p[1] + r.h + 0.35, p[1] + r.h + 0.5, p[2] - s - 0.05, p[2] + s + 0.05, TRIM, { dens: 8, bevel: 0.03 });
+    for (const nd of r.newels) {                          // t, or { t, half } for a half newel on a wall
+      const nt = nd.t ?? nd, p = at(nt);
+      newelPost(b, p[0], p[2], r.newelBase ? r.newelBase(nt) : sloped ? p[1] - 0.12 : r.base(nt), p[1] + r.h + 0.1, nd.half);
     }
     b.collider(Math.min(r.x0, r.x1) - 0.14, Math.max(r.x0, r.x1) + 0.14, Math.min(r.base(0), r.base(1)), Math.max(r.base(0), r.base(1)) + r.h,
       Math.min(r.z0, r.z1) - 0.14, Math.max(r.z0, r.z1) + 0.14);
@@ -778,6 +1187,42 @@ function fixtures(b, lamps) {
       b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, x, y - 0.015, z);
       b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', x, y - 0.034, z, 0, { bake: false });
       lamps.push({ x, y: y - 0.06, z, r: 0.22, kind: 'down', I: f.I || 5.5 });
+    } else if (f.kind === 'wellcan') {
+      // can in a skylight shaft's south face, `up` of the way up it, facing along the face normal (north,
+      // and down where the shaft leans toward the back)
+      const sk = L.SKYLIGHTS[f.sky], { bot, top: tp } = sk.lean ? skylightShaft(sk).south
+        : { bot: [(sk.r[0] + sk.r[1]) / 2, L.MAIN_CEIL, sk.r[3]], top: [(sk.r[0] + sk.r[1]) / 2, L.MAIN_CEIL + 3, sk.r[3]] };
+      const v = [0, tp[1] - bot[1], tp[2] - bot[2]], l = Math.hypot(...v), n = [0, v[2] / l, -v[1] / l];
+      const P = d => [bot[0] + v[0] * f.up + n[0] * d, bot[1] + v[1] * f.up + n[1] * d, bot[2] + v[2] * f.up + n[2] * d];
+      const rx = Math.atan2(n[2], n[1]);                                  // turns the cylinder's axis (y) onto n
+      b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, ...P(0.015), 0, { rx });
+      b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', ...P(0.034), 0, { rx, bake: false });
+      const q = P(0.2);
+      lamps.push({ x: q[0], y: q[1], z: q[2], r: 0.2, kind: 'omni', I: 4 });
+    } else if (f.kind === 'fan') {
+      // bath exhaust fan: white grille with dark louvre slots, no light
+      b.mbox(x - 0.45, x + 0.45, y - 0.04, y, z - 0.35, z + 0.35, 'plate');
+      for (let i = 0; i < 12; i++) { const sz = z - 0.275 + i * 0.05; b.mbox(x - 0.36, x + 0.36, y - 0.046, y - 0.039, sz - 0.0125, sz + 0.0125, 'paint:#2b2a28'); }
+    } else if (f.kind === 'track') {
+      // white ceiling track; cylinder spot heads on short stems, tilted 45 degrees down toward -z. Only the
+      // lenses glow: each lamp is a 'down' lamp just in front of its lens, so the track and the heads' bodies
+      // (above it) aren't flooded by their own lamps and don't bake as bright blocks
+      b.mbox(f.x0, f.x1, y - 0.06, y, z - 0.05, z + 0.05, 'plate');
+      const dy = -Math.SQRT1_2, dz = -Math.SQRT1_2, hy = y - 0.4;
+      for (const hx of f.heads) {
+        b.prim(new THREE.CylinderGeometry(0.025, 0.025, 0.26, 8), 'plate', hx, y - 0.19, z);
+        b.prim(new THREE.SphereGeometry(0.05, 10, 8), 'plate', hx, y - 0.32, z);
+        b.prim(new THREE.CylinderGeometry(0.14, 0.14, 0.45, 20), 'plate', hx, hy, z, 0, { rx: -3 * Math.PI / 4 });
+        b.prim(new THREE.CylinderGeometry(0.11, 0.11, 0.01, 20), 'lampGlow', hx, hy + dy * 0.23, z + dz * 0.23, 0, { rx: -3 * Math.PI / 4, bake: false });
+        lamps.push({ x: hx, y: hy + dy * 0.4, z: z + dz * 0.4, r: 0.1, kind: 'down', I: 6 });
+      }
+    } else if (f.kind === 'flush') {
+      // small white flush dome (11")
+      b.prim(new THREE.CylinderGeometry(0.46, 0.46, 0.04, 28), 'plate', x, y - 0.02, z);
+      const g = new THREE.SphereGeometry(0.4, 24, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+      g.scale(1, 0.45, 1);
+      b.prim(g, 'frosted', x, y - 0.04, z, 0, { bake: false });
+      lamps.push({ x, y: y - 0.3, z, r: 0.25, kind: 'omni', I: 5 });
     } else if (f.kind === 'dome') {
       b.prim(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 32), 'bronze', x, y - 0.025, z);
       const g = new THREE.SphereGeometry(0.58, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
@@ -813,11 +1258,13 @@ function fixtures(b, lamps) {
       b.prim(new THREE.SphereGeometry(0.045, 10, 8), 'bronze', x, rimY - 0.36, z);
       lamps.push({ x, y: rimY - 0.12, z, r: 0.3, kind: 'omni', I: 8 });
     } else if (f.kind === 'pendant') {
-      // entry pendant: amber glass bowl held in a bronze rim ring by four scrolled arms from a hub on the stem
+      // entry pendant (photo 2): a chain down to a ring, a slim centre column, and four slender S-scrolls that
+      // stay inside the bowl's width, holding a shallow ribbed amber bowl in a bronze rim ring
       const bot = y - f.drop, hubY = bot + 1.15, rimY = bot + 0.45;
       b.prim(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 20), 'bronze', x, y - 0.03, z);
-      b.prim(new THREE.CylinderGeometry(0.022, 0.022, y - hubY, 8), 'bronze', x, (y + hubY) / 2, z);
-      b.prim(new THREE.SphereGeometry(0.075, 14, 10), 'bronze', x, hubY, z);
+      b.prim(new THREE.CylinderGeometry(0.018, 0.018, y - hubY - 0.12, 8), 'bronze', x, (y + hubY + 0.12) / 2, z);
+      b.prim(new THREE.TorusGeometry(0.055, 0.014, 6, 16), 'bronze', x, hubY + 0.06, z);                 // ring at the chain's foot
+      b.prim(new THREE.CylinderGeometry(0.035, 0.03, hubY - rimY, 10), 'bronze', x, (hubY + rimY) / 2, z); // centre column
       const pts = [];
       for (let i = 0; i <= 12; i++) { const a = i / 12 * Math.PI / 2; pts.push(new THREE.Vector2(0.001 + Math.sin(a) * 0.72, -Math.cos(a) * 0.42)); }
       b.prim(new THREE.LatheGeometry(pts, 32), 'amberGlass', x, rimY, z, 0, { bake: false });
@@ -825,8 +1272,9 @@ function fixtures(b, lamps) {
       for (let i = 0; i < 4; i++) {
         const a = i * Math.PI / 2 + Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a);
         const Pt = (r, yy) => new THREE.Vector3(x + ca * r, yy, z + sa * r);
-        b.mesh(new THREE.TubeGeometry(new THREE.CubicBezierCurve3(Pt(0.05, hubY), Pt(0.5, hubY + 0.18), Pt(0.98, rimY + 0.55), Pt(0.735, rimY + 0.01)), 28, 0.022, 6), 'bronze');
-        b.prim(new THREE.TorusGeometry(0.085, 0.015, 6, 18, Math.PI * 1.6), 'bronze', x + ca * 0.5, hubY - 0.02, z + sa * 0.5, -a);
+        b.mesh(new THREE.TubeGeometry(new THREE.CubicBezierCurve3(Pt(0.04, hubY - 0.02), Pt(0.36, hubY + 0.04), Pt(0.66, rimY + 0.34), Pt(0.71, rimY + 0.02)), 28, 0.015, 6), 'bronze');
+        b.prim(new THREE.TorusGeometry(0.05, 0.01, 6, 16, Math.PI * 1.6), 'bronze', x + ca * 0.24, hubY - 0.04, z + sa * 0.24, -a);   // small curl at the top
+        b.prim(new THREE.TorusGeometry(0.045, 0.01, 6, 16, Math.PI * 1.6), 'bronze', x + ca * 0.6, rimY + 0.2, z + sa * 0.6, -a);     // and near the rim
       }
       b.prim(new THREE.SphereGeometry(0.055, 10, 8), 'bronze', x, bot + 0.01, z);
       lamps.push({ x, y: bot + 0.3, z, r: 0.35, kind: 'omni', I: 12 });
@@ -849,9 +1297,58 @@ function fixtures(b, lamps) {
   }
 }
 
+// ========================================================= stair closet ===
+// Storage closet under the front stairs: runs from its door under the top flight and on under the entry
+// landing to the front wall. White walls, grey tile, a flat ceiling under the landing, a foundation ledge
+// along the front wall, a wire-shelving alcove with a bifold door, a black steel cabinet. The partition
+// beside the bottom flight is full height only for the first foot past the door; from there it is open
+// under the flight (see stairs()), and under the landing the closet runs on west to the stairwell wall.
+function stairCloset(b) {
+  const WH = 'paint:' + L.PAINT.storage, C = L.FRONT - 0.7, x0 = 24.8 + OPEN_W, xE = 28.55, xW = 20.8 + L.WALL_T / 2;
+  b.poly([[x0, C, L.FU.z1], [xE, C, L.FU.z1], [xE, C, L.FD.z1], [x0, C, L.FD.z1]], WH, { n: [0, -1, 0] });      // flat ceiling
+  b.poly([[xW, C, L.FD.z1], [xE, C, L.FD.z1], [xE, C, 29.75], [xW, C, 29.75]], WH, { n: [0, -1, 0] });            // ...on under the landing
+  // under the bottom flight, wherever the headroom is below 5.5 ft, the player is kept out
+  const sd = z => L.LOW + (z - L.FD.z0 - 1.6) * (L.FRONT - L.LOW) / (L.FD.z1 - L.FD.z0), zLow = L.FD.z0 + 1.6 + 5.5 * (L.FD.z1 - L.FD.z0) / (L.FRONT - L.LOW);
+  for (let z = 19.5; z < zLow - 1e-6; z += 0.5) b.collider(20.8, x0, 0, Math.max(1.05, sd(z)), z, Math.min(zLow, z + 0.5));
+  // white linings where the stairwell's walls run on above the landing height (their faces are tan there)
+  const zm = L.FU.z1 - (L.FRONT - C) / ((L.MAIN - 1.25 - C) / (L.FU.z1 - L.FU.z0));                             // soffit at FRONT
+  b.poly([[xE - 0.01, L.FRONT, 19.5], [xE - 0.01, L.FRONT, zm], [xE - 0.01, L.MAIN - 1.25, L.FU.z0], [xE - 0.01, L.MAIN - 1.25, 19.5]], WH, { n: [-1, 0, 0] });
+  b.poly([[xE - 0.01, L.MAIN - 1.25, 19.5], [xE - 0.01, L.MAIN - 1.25, L.FU.z0], [xE - 0.01, L.LOW_CEIL, L.FU.z0], [xE - 0.01, L.LOW_CEIL, 19.5]], WH, { n: [-1, 0, 0] });
+  b.poly([[x0, L.LOW + 6.8, 19.71], [xE, L.LOW + 6.8, 19.71], [xE, L.LOW_CEIL, 19.71], [x0, L.LOW_CEIL, 19.71]], WH, { n: [0, 0, 1] });
+  const fd = z => L.LOW + (z - L.FD.z0 - 1.6) * (L.FRONT - L.LOW) / (L.FD.z1 - L.FD.z0), zf = L.FD.z0 + 1.6;       // under the bottom flight
+  b.poly([[21.01, 0, zf], [21.01, 0, L.FD.z1], [21.01, fd(L.FD.z1), L.FD.z1]], WH, { n: [1, 0, 0] });
+  // marble threshold in the doorway
+  b.box(25.5, 28.1, L.LOW, L.LOW + 0.04, 19.28, 19.72, 'tileMarble', { skip: ['ny'], dens: 8 });
+  // foundation ledge along the front wall
+  b.box(xW, xE, L.LOW, L.LOW + 4.5, 28.95, 29.75, WH, { skip: ['ny', 'pz', 'nx', 'px'], collide: true });
+  // wire-shelving alcove: framed box against the east wall, open to the west
+  const za = 24.9, zb = 27.3, ax = 27.2, hy = 5.45;
+  b.box(ax, xE, 0, C, za, za + 0.1, WH, { skip: ['px', 'ny', 'py'] });
+  b.box(ax, xE, 0, C, zb - 0.1, zb, WH, { skip: ['px', 'ny', 'py'] });
+  b.box(ax, xE, hy, C, za + 0.1, zb - 0.1, WH, { skip: ['px', 'py'] });
+  for (const [z0, z1] of [[za - 0.05, za + 0.14], [zb - 0.14, zb + 0.05]]) b.box(ax - 0.05, ax, 0, hy + 0.1, z0, z1, TRIM, { skip: ['px', 'ny'], dens: 8 });
+  b.box(ax - 0.05, ax, hy - 0.1, hy + 0.1, za + 0.14, zb - 0.14, TRIM, { skip: ['px'], dens: 8 });
+  for (const y of [1.0, 2.2, 3.4, 4.6]) {
+    for (const x of [ax + 0.12, xE - 0.04]) b.mbox(x - 0.012, x + 0.012, y - 0.03, y + 0.012, za + 0.1, zb - 0.1, 'plate');
+    for (let z = za + 0.16; z < zb - 0.12; z += 0.1) b.mbox(ax + 0.12, xE - 0.04, y - 0.006, y + 0.006, z - 0.006, z + 0.006, 'plate');
+  }
+  b.collider(ax - 0.05, xE, 0, C, za - 0.05, zb + 0.05);
+  // bifold: the south pair closed in the opening, the north pair folded open against the jamb
+  const leaf = (x0l, x1l, z0l, z1l) => b.box(x0l, x1l, 0.05, hy - 0.12, z0l, z1l, 'doorWhite', { dens: 7, bevel: 0.01 });
+  leaf(ax + 0.02, ax + 0.1, 26.12, 26.64); leaf(ax + 0.02, ax + 0.1, 26.66, zb - 0.16);
+  leaf(ax - 0.5, ax + 0.06, za + 0.16, za + 0.24); leaf(ax - 0.5, ax + 0.06, za + 0.26, za + 0.34);
+  b.prim(new THREE.SphereGeometry(0.035, 10, 8), 'nickel', ax - 0.01, 3.0, 26.2);
+  // tall black steel cabinet on the east wall, beyond the door's swing
+  const cz0 = 22.4, cz1 = cz0 + 1.3, cx = xE - 1.2;
+  b.box(cx, xE, L.LOW, L.LOW + 4.5, cz0, cz1, 'tvBody', { skip: ['px', 'ny'], collide: true, bevel: 0.015 });
+  b.mbox(cx - 0.005, cx + 0.002, 0.1, 4.4, (cz0 + cz1) / 2 - 0.008, (cz0 + cz1) / 2 + 0.008, 'paint:#050505');
+  for (const dz of [-0.12, 0.12]) b.mbox(cx - 0.05, cx, 2.5, 2.9, (cz0 + cz1) / 2 + dz - 0.015, (cz0 + cz1) / 2 + dz + 0.015, 'nickel');
+}
+
 // =============================================================== kitchen ===
-// Cream flat-panel cabinets with brass bar pulls, cream solid-surface tops with a rounded end,
-// stainless appliances (photos 3, 4, 37).
+// Cream flat-panel cabinets with butter-yellow loop pulls, cream solid-surface tops, a curved (concave)
+// north-west corner and a rounded end at the stair; the uppers run up to a soffit in the cabinet finish, and a boxed
+// bulkhead sits over the sink window. Stainless appliances (photos 3, 4, 37).
 function roundedEnd(len, depth, radius) {
   const s = new THREE.Shape();
   s.moveTo(0, 0); s.lineTo(len, 0); s.lineTo(len, depth - radius);
@@ -859,38 +1356,65 @@ function roundedEnd(len, depth, radius) {
   s.lineTo(0, depth); s.lineTo(0, 0);
   return s;
 }
+// Plan outline [[x, z], ...] in world feet, extruded from y0 up to y1 (probe-lit).
+function planSolid(b, pts, mat, y0, y1) {
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z))), { depth: y1 - y0, bevelEnabled: false });
+  g.rotateX(Math.PI / 2);
+  b.prim(g, mat, 0, y1, 0);
+}
+// Points on a plan arc round (cx, cz), angle a0 → a1 (0 = +x, π/2 = +z).
+const arcPts = (cx, cz, r, a0, a1, n = 12) => Array.from({ length: n + 1 }, (_, i) => {
+  const a = a0 + (a1 - a0) * i / n;
+  return [cx + r * Math.cos(a), cz + r * Math.sin(a)];
+});
 function kitchen(b) {
-  const F = L.MAIN, CAB = 'cabinet', TOP = 'counter';
-  const baseH = 2.95, topT = 0.125, depth = 2.05, kick = 0.35;
+  const F = L.MAIN, C = L.MAIN_CEIL, CAB = 'cabinet', TOP = 'counter', KICK = 'paint:#3a3632', SOF = CAB;   // soffit + bulkhead: same finish as the cabinets
+  const baseH = 2.95, topT = 0.125, depth = 2.05, kick = 0.35, cTop = F + baseH;
   const W = 26.6 + 0.2;               // west wall face
   const N = 0.25;                     // north wall face
+  // corner piece from the wall corner out to (x1, z1), with a concave quarter-round of radius r there
+  const cove = (x1, z1, r) => [[W, N], [x1, N], ...arcPts(x1, z1, r, -Math.PI / 2, -Math.PI), [W, z1]];
+  // curved door: a 0.06 shell just in front of a cove of radius r, pull near its north edge
+  const curvedDoor = (cx, cz, r, y0, y1, py) => {
+    const g = 0.02 / r, a0 = -Math.PI / 2 - g, a1 = -Math.PI + g, rf = r - 0.06, a = a0 - 0.15 / r;
+    planSolid(b, [...arcPts(cx, cz, r - 0.003, a0, a1), ...arcPts(cx, cz, rf, a1, a0)], CAB, y0, y1);
+    loopPull(b, [cx + rf * Math.cos(a), py, cz + rf * Math.sin(a)], [0, 1, 0], [-Math.cos(a), 0, -Math.sin(a)]);
+  };
   const baseWest = (z0, z1, doors) => {
-    b.box(W, W + depth - 0.1, F + kick, F + baseH - topT, z0, z1, CAB, { skip: ['ny', 'nx'], collide: true });
-    b.box(W, W + depth - 0.2, F, F + kick, z0, z1, 'paint:#3a3632', { skip: ['ny', 'nx', 'py'] });
-    cabinetFronts(b, 'x+', W + depth - 0.1, z0, z1, F + kick, F + baseH - topT, doors, true);
+    b.box(W, W + depth - 0.1, F + kick, cTop - topT, z0, z1, CAB, { skip: ['ny', 'nx'], collide: true });
+    b.box(W, W + depth - 0.2, F, F + kick, z0, z1, KICK, { skip: ['ny', 'nx', 'py'] });
+    cabinetFronts(b, 'x+', W + depth - 0.1, z0, z1, F + kick, cTop - topT, doors, true);
   };
-  const baseNorth = (x0, x1, doors) => {
-    b.box(x0, x1, F + kick, F + baseH - topT, N, N + depth - 0.1, CAB, { skip: ['ny', 'nz'], collide: true });
-    b.box(x0, x1, F, F + kick, N, N + depth - 0.2, 'paint:#3a3632', { skip: ['ny', 'nz', 'py'] });
-    cabinetFronts(b, 'z+', N + depth - 0.1, x0, x1, F + kick, F + baseH - topT, doors, true);
+  const baseNorth = (x0, x1, doors, sink) => {        // sink: no top face (the counter covers the rest; the basin shows)
+    b.box(x0, x1, F + kick, cTop - topT, N, N + depth - 0.1, CAB, { skip: ['ny', 'nz', ...(sink ? ['py'] : [])], collide: true });
+    b.box(x0, x1, F, F + kick, N, N + depth - 0.2, KICK, { skip: ['ny', 'nz', 'py'] });
+    cabinetFronts(b, 'z+', N + depth - 0.1, x0, x1, F + kick, cTop - topT, doors, true);
   };
-  // west run: corner base, range, pantry tower, fridge
-  baseWest(N + depth - 0.1, 3.0, 1);
-  range(b, W, 3.0, 5.5);
-  baseWest(5.5, 6.72, 1);                                   // base cabinet between the range and the fridge (photo 3)
-  fridge(b, W, 6.75, 9.65, F);
-  // north run: bases, sink under the window, dishwasher, rounded end cabinet at the stair
-  baseNorth(W, 30.3, 2);
-  baseNorth(30.3, 32.6, 2);
+  // north-west corner: a curved base cabinet; its kick and top follow concentric arcs
+  const bx = 29.3, bz = 2.75;
+  planSolid(b, cove(bx, bz, 0.65), KICK, F, F + kick);
+  planSolid(b, cove(bx, bz, 0.55), CAB, F + kick, cTop - topT);
+  planSolid(b, cove(bx, bz, 0.37), TOP, cTop - topT, cTop);
+  curvedDoor(bx, bz, 0.55, F + kick + 0.02, cTop - topT - 0.02, cTop - topT - 0.35);
+  b.collider(W, bx, F, cTop, N, bz);
+  // west run: narrow base, range, base under a black top, the fridge enclosure's side panel, fridge
+  baseWest(bz, 3.4, 1);
+  range(b, W, 3.4, 5.9);
+  baseWest(5.9, 6.72, 1);
+  b.box(W, W + 2.4, F, C, 6.72, 6.78, CAB, { skip: ['nx', 'py'], collide: true });
+  fridge(b, W, 6.8, 9.65, F);
+  // north run: base with a drawer, sink base under the window, dishwasher, rounded end cabinet at the stair
+  baseNorth(bx, 30.3, 1);
+  baseNorth(30.3, 32.6, 2, true);
   dishwasher(b, 32.6, 34.5, N, F);
   const xEnd = 34.5;
-  // countertops (west strip, corner, north run with sink cut-out)
-  const cTop = F + baseH;
-  const z1 = N + depth + 0.08;
-  b.box(W, W + depth + 0.08, cTop - topT, cTop, z1, 3.0, TOP, { skip: ['nx', 'pz'], dens: 7 });
-  const sx0 = 30.55, sx1 = 32.35, sz0 = N + 0.3, sz1 = N + 1.75;
+  // countertops (west strip, black top between range and fridge, north run with sink cut-out)
+  const z1 = N + depth + 0.08, xf = W + depth + 0.08;
+  b.box(W, xf, cTop - topT, cTop, bz, 3.4, TOP, { skip: ['nx', 'nz', 'pz'], dens: 7 });
+  b.box(W, xf, cTop - topT, cTop, 5.9, 6.72, 'counterBlack', { skip: ['nx'], dens: 7 });
+  const sx0 = 30.55, sx1 = 32.35, sz0 = N + 0.6, sz1 = N + 1.95;          // basin forward, clear of the window trim
   const topPiece = (x0, x1, za, zb, skip) => b.box(x0, x1, cTop - topT, cTop, za, zb, TOP, { skip, dens: 7 });
-  topPiece(W, sx0, N, z1, ['nz', 'nx', 'px']);
+  topPiece(bx, sx0, N, z1, ['nz', 'nx', 'px']);
   topPiece(sx1, xEnd, N, z1, ['nz', 'nx', 'px']);
   topPiece(sx0, sx1, N, sz0, ['nz', 'nx', 'px']);
   topPiece(sx0, sx1, sz1, z1, ['nz', 'nx', 'px']);
@@ -901,27 +1425,42 @@ function kitchen(b) {
   const endBody = new THREE.ExtrudeGeometry(roundedEnd(35.0 - xEnd - 0.08, z1 - N - 0.18, 0.4), { depth: baseH - topT - kick, bevelEnabled: false, curveSegments: 16 });
   endBody.rotateX(Math.PI / 2);
   b.prim(endBody, CAB, xEnd, cTop - topT, N);
-  b.box(xEnd, 34.85, F, F + kick, N, N + depth - 0.2, 'paint:#3a3632', { skip: ['ny', 'nz', 'py'] });
+  b.box(xEnd, 34.85, F, F + kick, N, N + depth - 0.2, KICK, { skip: ['ny', 'nz', 'py'] });
   b.collider(xEnd, 35.0, F, cTop, N, z1);
   // sink basin + faucet
   sinkInner(b, sx0, sx1, sz0, sz1, cTop - 0.75, cTop - topT);
-  faucet(b, (sx0 + sx1) / 2, cTop, N + 0.12, 's');
-  // backsplash
+  faucet(b, (sx0 + sx1) / 2, cTop, N + 0.42, 's');
+  // backsplash (black over the black top)
   b.box(W, 35.0, cTop, cTop + 0.3, N, N + 0.05, TOP, { skip: ['nz', 'ny'], dens: 6 });
-  b.box(W, W + 0.05, cTop, cTop + 0.3, N, 3.0, TOP, { skip: ['nx', 'ny'], dens: 6 });
-  // uppers: north wall either side of the window (30.6..33.4) and on the west wall
-  const uy0 = F + 4.5, uy1 = F + 7.5, ud = 1.1;
-  const upperN = (x0, x1, doors) => { b.box(x0, x1, uy0, uy1, N, N + ud, CAB, { skip: ['nz'] }); cabinetFronts(b, 'z+', N + ud, x0, x1, uy0 + 0.02, uy1 - 0.02, doors, false); };
-  const upperW = (z0, z1b, doors, y0 = uy0) => { b.box(W, W + ud, y0, uy1, z0, z1b, CAB, { skip: ['nx'] }); cabinetFronts(b, 'x+', W + ud, z0, z1b, y0 + 0.02, uy1 - 0.02, doors, false); };
-  upperN(W + ud, 30.25, 2);
-  upperN(33.75, 35.0, 1);
-  upperW(N, 3.0, 1);
-  upperW(3.0, 5.5, 2, F + 6.2);
-  upperW(5.5, 6.72, 1);
-  b.box(W, W + depth + 0.08, cTop - topT, cTop, 5.5, 6.72, TOP, { skip: ['nx'], dens: 7 });
-  b.box(W, W + 0.05, cTop, cTop + 0.3, 5.5, 6.72, TOP, { skip: ['nx', 'ny'], dens: 6 });
-  microwave(b, W, 3.05, 5.45, F + 4.6);
-  b.box(W, W + 2.4, F + 6.4, uy1, 6.72, 9.7, CAB, { skip: ['nx', 'ny'] });
+  b.box(W, W + 0.05, cTop, cTop + 0.3, N + 0.05, 3.4, TOP, { skip: ['nx', 'ny'], dens: 6 });
+  b.box(W, W + 0.05, cTop, cTop + 0.3, 5.9, 6.72, 'counterBlack', { skip: ['nx', 'ny'], dens: 6 });
+  // uppers: up to a soffit that fills the last few inches flush to the ceiling; curved corner, bulkhead
+  // over the window, rounded end at the stair
+  const uy0 = F + 4.5, uy1 = F + 7.75, ud = 1.1;
+  const upperN = (x0, x1, doors) => { b.box(x0, x1, uy0, uy1, N, N + ud, CAB, { skip: ['nz', 'py'] }); cabinetFronts(b, 'z+', N + ud, x0, x1, uy0 + 0.02, uy1 - 0.02, doors, false); };
+  const upperW = (z0, z1b, doors, y0 = uy0) => { b.box(W, W + ud, y0, uy1, z0, z1b, CAB, { skip: ['nx', 'py'] }); cabinetFronts(b, 'x+', W + ud, z0, z1b, y0 + 0.02, uy1 - 0.02, doors, false); };
+  const ux = 28.5, uz = 1.95;
+  planSolid(b, cove(ux, uz, 0.6), CAB, uy0, uy1);
+  planSolid(b, cove(ux, uz, 0.6), SOF, uy1, C);
+  curvedDoor(ux, uz, 0.6, uy0 + 0.04, uy1 - 0.04, uy0 + 0.35);
+  upperW(uz, 3.4, 2);
+  upperW(3.4, 5.9, 2, F + 6.2);
+  upperW(5.9, 6.72, 1);
+  microwave(b, W, 3.45, 5.85, F + 4.6);
+  b.box(W, W + ud, uy1, C, uz, 6.72, SOF, { skip: ['nx', 'py', 'ny', 'nz', 'pz'] });
+  upperN(ux, 30.25, 2);
+  b.box(ux, 30.25, uy1, C, N, N + ud, SOF, { skip: ['nz', 'py', 'ny', 'nx', 'px'] });
+  b.box(30.25, 33.6, F + 6.95, C, N, N + ud, SOF, { skip: ['nz', 'py', 'px'] });          // bulkhead over the window
+  for (const [mat, y0, y1] of [[CAB, uy0, uy1], [SOF, uy1, C]]) {                          // rounded east upper + soffit
+    const g = new THREE.ExtrudeGeometry(roundedEnd(35.0 - 33.6, ud, 0.45), { depth: y1 - y0, bevelEnabled: false, curveSegments: 16 });
+    g.rotateX(Math.PI / 2);
+    b.prim(g, mat, 33.6, y1, N);
+  }
+  cabinetFronts(b, 'z+', N + ud, 33.6, 34.55, uy0 + 0.02, uy1 - 0.02, 2, false);
+  // cabinet over the fridge (2.4 deep, two doors) and its soffit
+  b.box(W, W + 2.4, F + 6.4, uy1, 6.78, 9.7, CAB, { skip: ['nx', 'ny', 'py'] });
+  cabinetFronts(b, 'x+', W + 2.4, 6.78, 9.7, F + 6.42, uy1 - 0.02, 2, false);
+  b.box(W, W + 2.4, uy1, C, 6.78, 9.7, SOF, { skip: ['nx', 'py', 'ny', 'nz'] });
 }
 function cabinetFronts(b, facing, face, a0, a1, y0, y1, doors, drawer) {
   const gap = 0.02, depth = 0.06;
@@ -930,12 +1469,8 @@ function cabinetFronts(b, facing, face, a0, a1, y0, y1, doors, drawer) {
     else b.box(s0, s1, t0, t1, face, face + depth, 'cabinet', { skip: ['nz'], dens: 7, bevel: 0.014 });
   };
   const pull = (s, t, horiz) => {
-    const L2 = horiz ? 0.35 : 0.3;
-    if (facing === 'x+') {
-      if (horiz) b.mbox(face + depth, face + depth + 0.07, t - 0.015, t + 0.015, s - L2 / 2, s + L2 / 2, 'brass');
-      else b.mbox(face + depth, face + depth + 0.07, t - L2 / 2, t + L2 / 2, s - 0.015, s + 0.015, 'brass');
-    } else if (horiz) b.mbox(s - L2 / 2, s + L2 / 2, t - 0.015, t + 0.015, face + depth, face + depth + 0.07, 'brass');
-    else b.mbox(s - 0.015, s + 0.015, t - L2 / 2, t + L2 / 2, face + depth, face + depth + 0.07, 'brass');
+    const out = facing === 'x+' ? [1, 0, 0] : [0, 0, 1];
+    loopPull(b, facing === 'x+' ? [face + depth, t, s] : [s, t, face + depth], horiz ? [out[2], 0, out[0]] : [0, 1, 0], out);
   };
   let top = y1;
   const w = (a1 - a0) / doors;
@@ -950,6 +1485,14 @@ function cabinetFronts(b, facing, face, a0, a1, y0, y1, doors, drawer) {
     const s = doors === 2 ? (i === 0 ? s1 - 0.15 : s0 + 0.15) : s1 - 0.15;
     pull(s, drawer ? top - 0.3 : y0 + 0.35, false);
   }
+}
+// D-shaped loop pull: a round rod bent into a squared U standing 0.07 off the door; c = centre on the
+// door face, along = its length, out = the door's outward normal.
+function loopPull(b, c, along, out, len = 0.33) {
+  const h = len / 2, d = 0.07;
+  const P = (a, o) => new THREE.Vector3(c[0] + along[0] * a + out[0] * o, c[1] + along[1] * a + out[1] * o, c[2] + along[2] * a + out[2] * o);
+  const path = new THREE.CatmullRomCurve3([P(-h, -0.005), P(-h, d * 0.6), P(-h + 0.035, d), P(h - 0.035, d), P(h, d * 0.6), P(h, -0.005)], false, 'centripetal');
+  b.mesh(new THREE.TubeGeometry(path, 24, 0.0175, 6), 'pull');
 }
 function range(b, W, z0, z1) {
   const F = L.MAIN;
@@ -993,6 +1536,19 @@ function sinkInner(b, x0, x1, z0, z1, y0, y1) {
   b.poly([[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], 'porcelain', { ...o, n: [1, 0, 0] });
   b.poly([[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]], 'porcelain', { ...o, n: [-1, 0, 0] });
   b.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 16), 'stainless', (x0 + x1) / 2, y0 + 0.01, (z0 + z1) / 2);
+}
+// Widespread bathroom faucet on a vanity deck (the basin toward -x): a centre spout arching out over the
+// basin and two lever handles 0.33 either side along z; brushed nickel.
+function widespreadFaucet(b, x, y, z, mat = 'nickel') {
+  b.prim(new THREE.CylinderGeometry(0.07, 0.08, 0.05, 16), mat, x, y + 0.025, z);
+  b.prim(new THREE.CylinderGeometry(0.04, 0.045, 0.38, 12), mat, x, y + 0.24, z);
+  b.mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(x, y + 0.4, z), V3(x, y + 0.62, z), V3(x - 0.42, y + 0.5, z)), 16, 0.035, 8), mat);
+  for (const s of [-1, 1]) {
+    const hz = z + s * 0.33;
+    b.prim(new THREE.CylinderGeometry(0.06, 0.07, 0.05, 16), mat, x, y + 0.025, hz);
+    b.prim(new THREE.CylinderGeometry(0.035, 0.04, 0.14, 12), mat, x, y + 0.12, hz);
+    beam(b, [x, y + 0.17, hz], [x - 0.05, y + 0.24, hz + s * 0.2], 0.03, 0, mat, { round: true });
+  }
 }
 function faucet(b, x, y, z, face, mat = 'chrome') {
   const dir = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[face];
@@ -1119,23 +1675,33 @@ const FURN = {
     const face = x0 + 0.08;
     const n = (z1 - z0) > 3.6 ? 3 : 2;
     const w = (z1 - z0) / n;
+    // a door or drawer front; shaker: stiles and rails framing a recessed centre panel
+    const front = (y0, y1, za, zb, rail) => {
+      b.box(face - 0.05, face, y0, y1, za, zb, cab, { skip: ['px'], dens: 6 });
+      if (!f.shaker) return;
+      const k = Math.min(rail, (zb - za) / 4, (y1 - y0) / 4);
+      for (const [p0, p1, q0, q1] of [[y0, y0 + k, za, zb], [y1 - k, y1, za, zb], [y0 + k, y1 - k, za, za + k], [y0 + k, y1 - k, zb - k, zb]]) b.mbox(face - 0.07, face - 0.05, p0, p1, q0, q1, cab);
+    };
     for (let i = 0; i < n; i++) {
       const a = z0 + i * w + 0.03, a2 = a + w - 0.06;
       if ((n === 3 && i === 1) || n === 2) {
-        b.box(face - 0.05, face, F + 0.4, F + H - topT - 0.45, a, a2, cab, { skip: ['px'], dens: 6 });
-        const pz = n === 2 ? (i === 0 ? a2 - 0.15 : a + 0.15) : a2 - 0.15;
-        b.mbox(face - 0.12, face - 0.05, F + 1.6, F + 2.0, pz - 0.015, pz + 0.015, 'nickel');
-        b.box(face - 0.05, face, F + H - topT - 0.4, F + H - topT - 0.05, a, a2, cab, { skip: ['px'], dens: 6 });
+        // doors (with shaker fronts, a pair between the drawer stacks), a false drawer front over them
+        const zm = (a + a2) / 2, leaves = f.shaker && n === 3 ? [[a, zm - 0.01, zm - 0.12], [zm + 0.01, a2, zm + 0.12]] : [[a, a2, n === 2 ? (i === 0 ? a2 - 0.15 : a + 0.15) : a2 - 0.15]];
+        for (const [la, lb, pz] of leaves) {
+          front(F + 0.4, F + H - topT - 0.45, la, lb, 0.18);
+          b.mbox(face - 0.12 - (f.shaker ? 0.02 : 0), face - 0.05 - (f.shaker ? 0.02 : 0), F + 1.6, F + 2.0, pz - 0.015, pz + 0.015, 'nickel');
+        }
+        front(F + H - topT - 0.4, F + H - topT - 0.05, a, a2, 0.08);
       } else {
         for (let r = 0; r < 4; r++) {
-          const y0 = F + 0.4 + r * 0.53, y1 = y0 + 0.49;
-          b.box(face - 0.05, face, y0, y1, a, a2, cab, { skip: ['px'], dens: 6 });
-          b.mbox(face - 0.12, face - 0.05, (y0 + y1) / 2 - 0.015, (y0 + y1) / 2 + 0.015, (a + a2) / 2 - 0.2, (a + a2) / 2 + 0.2, 'nickel');
+          const y0 = F + 0.4 + r * 0.53, y1 = y0 + 0.49, px = face - 0.05 - (f.shaker ? 0.02 : 0);
+          front(y0, y1, a, a2, 0.09);
+          b.mbox(px - 0.07, px, (y0 + y1) / 2 - 0.015, (y0 + y1) / 2 + 0.015, (a + a2) / 2 - 0.2, (a + a2) / 2 + 0.2, 'nickel');
         }
       }
     }
     // top with an undermount oval basin
-    const top = f.top === 'granite' ? 'granite' : 'cultured';
+    const top = f.top || 'cultured';
     const cz = (z0 + z1) / 2, cy = F + H;
     const bw = 1.55, bd = 1.05, bx = (x0 + x1) / 2 - 0.1;
     b.box(x0 - 0.05, x1, cy - topT, cy, z0 - 0.05, z1 + 0.05, top, { skip: ['py', 'px'], dens: 7 });
@@ -1148,9 +1714,17 @@ const FURN = {
     bowl.scale(bd / 2, 0.45, bw / 2);
     bowl.scale(-1, 1, 1);
     b.prim(bowl, 'porcelain', bx, cy - topT + 0.01, cz);
-    faucet(b, x1 - 0.35, cy, cz, 'w', 'nickel');
+    if (f.faucet === 'widespread') widespreadFaucet(b, x1 - 0.35, cy, cz);
+    else faucet(b, x1 - 0.35, cy, cz, 'w', 'nickel');
     b.box(x1 - 0.06, x1, cy, cy + 0.33, z0 - 0.05, z1 + 0.05, top, { skip: ['px', 'ny'], dens: 6 });
-    if (f.mirror) {
+    if (f.mirror === 'cabinet') {
+      // frameless three-door medicine cabinet the vanity's width, 0.12 proud: mirror doors with two thin
+      // seams, a polished nickel edge band round it; no light over it (the bath is lit by its cans)
+      const my0 = cy + 0.33 + 0.5, my1 = cy + 3.6, fx = x1 - 0.12;
+      b.box(fx, x1, my0, my1, z0, z1, 'nickel', { skip: ['px', 'nx'], dens: 8 });
+      mirrors.push({ pts: [[fx - 0.002, my0, z0], [fx - 0.002, my0, z1], [fx - 0.002, my1, z1], [fx - 0.002, my1, z0]], n: [-1, 0, 0] });
+      for (const k of [1, 2]) { const zs = z0 + (z1 - z0) * k / 3; b.mbox(fx - 0.007, fx, my0, my1, zs - 0.006, zs + 0.006, 'paint:#3a3c3e'); }
+    } else if (f.mirror) {
       const my0 = cy + 0.6, my1 = cy + 3.9;
       mirrors.push({ pts: [[x1 - 0.03, my0, z0], [x1 - 0.03, my0, z1], [x1 - 0.03, my1, z1], [x1 - 0.03, my1, z0]], n: [-1, 0, 0] });
       b.box(x1 - 0.06, x1 - 0.02, my1 + 0.1, my1 + 0.3, z0 + 0.3, z1 - 0.3, 'nickel', { skip: ['px'] });
@@ -1170,6 +1744,11 @@ const FURN = {
       geo.rotateY(-ang); geo.translate(x, F, z);
       b.mesh(geo, 'porcelain');
     }
+    if (f.button) {                                     // round chrome push button on the tank lid
+      const btn = new THREE.CylinderGeometry(0.05, 0.05, 0.025, 20); btn.translate(-0.62, 2.672, 0);
+      btn.rotateY(-ang); btn.translate(x, F, z);
+      b.mesh(btn, 'chrome');
+    }
     b.collider(x - 0.9, x + 0.9, F, F + 2.6, z - 0.9, z + 0.9);
   },
   tub(b, f) {
@@ -1179,23 +1758,68 @@ const FURN = {
     b.poly([[x0 + 0.1, F + 0.35, z0 + 0.1], [x1 - 0.1, F + 0.35, z0 + 0.1], [x1 - 0.1, F + 0.35, z1 - 0.2], [x0 + 0.1, F + 0.35, z1 - 0.2]], 'porcelain', { n: [0, 1, 0], dens: 7 });
     b.poly([[x0 + 0.1, F + 0.35, z1 - 0.2], [x1 - 0.1, F + 0.35, z1 - 0.2], [x1 - 0.1, F + H - 0.12, z1 - 0.2], [x0 + 0.1, F + H - 0.12, z1 - 0.2]], 'porcelain', { n: [0, 0, -1], dens: 7 });
     b.collider(x0, x1, F, F + H, z0, z1);
-    // 12x24 marble-look tile surround to 7' on the three alcove walls (around the window)
-    const t0 = F + H, t1 = F + 7.3;
-    const wall = (pts, n) => b.poly(pts, 'tileWall', { n, dens: 6 });
-    const zN = 0.25 + 0.005, xW = 21.3 + 0.2 + 0.005, xE = 26.6 - 0.2 - 0.005;
-    const wy0 = L.MAIN + 4, wa0 = 22.8 - 0.3, wa1 = 25.9 + 0.3;
-    wall([[xW, t0, zN], [wa0, t0, zN], [wa0, t1, zN], [xW, t1, zN]], [0, 0, 1]);
-    wall([[wa1, t0, zN], [xE, t0, zN], [xE, t1, zN], [wa1, t1, zN]], [0, 0, 1]);
-    wall([[wa0, t0, zN], [wa1, t0, zN], [wa1, wy0 - 0.37, zN], [wa0, wy0 - 0.37, zN]], [0, 0, 1]);
-    wall([[xW, t0, zN], [xW, t0, z1], [xW, t1, z1], [xW, t1, zN]], [1, 0, 0]);
-    wall([[xE, t0, zN], [xE, t0, z1], [xE, t1, z1], [xE, t1, zN]], [-1, 0, 0]);
-    // curtain rod + gathered curtain (photo 11)
-    beam(b, [xW, F + 6.9, z1 + 0.05], [xE, F + 6.9, z1 + 0.05], 0.06, 0, 'chrome', { round: true });
-    const cw = 1.8, folds = 9, geo = new THREE.PlaneGeometry(cw, 5.6, folds * 4, 1);
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getX(i) / cw * folds * Math.PI * 2) * 0.09);
-    geo.computeVertexNormals();
-    b.prim(geo, 'curtain', x0 + 1.1, F + 4.05, z1 + 0.05, 0);
+    // 12x24 marble-look tile surround to 7' on the three alcove walls, round the window (the tile returns
+    // into it, see windowUnit) and the niche in the east end wall
+    const t0 = F + H, t1 = F + 7.3, zN = 0.25 + 0.005, xW = 21.3 + 0.2 + 0.005, xE = 26.6 - 0.2 - 0.005;
+    const holes = (alongX, cc, side) => L.WALLS.flatMap(w => {
+      const q = wallInfo(w);
+      if (q.alongX !== alongX || Math.abs(q.c + side * q.t / 2 - cc) > 0.02) return [];
+      return w.ops.filter(op => op.kind === 'window' || (op.kind === 'niche' && op.side === side)).map(op => [op.a0, op.a1, op.b0, op.b1]);
+    });
+    const tile = (alongX, cc, a0, a1, n, hs) => {
+      for (const [p0, p1, q0, q1] of rectMinus([a0, a1, t0, t1], hs)) {
+        if (p1 - p0 < 1e-3 || q1 - q0 < 1e-3) continue;
+        const P = (a, y) => (alongX ? [a, y, cc] : [cc, y, a]);
+        b.poly([P(p0, q0), P(p1, q0), P(p1, q1), P(p0, q1)], 'tileWall', { n, dens: 6 });
+      }
+    };
+    tile(true, zN, xW, xE, [0, 0, 1], holes(true, 0.25, 1));
+    tile(false, xW, zN, z1, [1, 0, 0], holes(false, 21.5, 1));
+    tile(false, xE, zN, z1, [-1, 0, 0], holes(false, 26.4, -1));
+    // plumbing wall (west end): spout, valve with a single lever, shower arm and head; brushed nickel
+    const zc = (z0 + z1 - 0.15) / 2, NI = 'nickel';
+    b.prim(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 20), NI, xW + 0.015, F + 2.1, zc, 0, { rz: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.05, 0.065, 0.45, 16), NI, xW + 0.225, F + 2.1, zc, 0, { rz: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.045, 0.045, 0.1, 12), NI, xW + 0.4, F + 2.05, zc);
+    b.prim(new THREE.CylinderGeometry(0.275, 0.275, 0.03, 32), NI, xW + 0.015, F + 3.3, zc, 0, { rz: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 16), NI, xW + 0.09, F + 3.3, zc, 0, { rz: Math.PI / 2 });
+    beam(b, [xW + 0.14, F + 3.3, zc], [xW + 0.2, F + 3.27, zc + 0.32], 0.035, 0, NI, { round: true });
+    b.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 20), NI, xW + 0.015, F + 6.4, zc, 0, { rz: Math.PI / 2 });
+    beam(b, [xW, F + 6.4, zc], [xW + 0.55, F + 6.22, zc], 0.07, 0, NI, { round: true });
+    b.prim(new THREE.CylinderGeometry(0.2, 0.12, 0.1, 24), NI, xW + 0.62, F + 6.16, zc, 0, { rz: 0.6 });
+    // small white triangular shelf in the back (north-east) corner at F + 3.4
+    const corner = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(-0.55, 0), new THREE.Vector2(0, 0.55)]), { depth: 0.05, bevelEnabled: false });
+    corner.rotateX(Math.PI / 2);
+    b.prim(corner, 'porcelain', xE, F + 3.4, zN);
+    // tension rod (brushed nickel), a grey ogee curtain and a plain white liner behind it, a little longer,
+    // gathered toward the west end (photo 11)
+    beam(b, [xW, F + 6.9, z1 + 0.05], [xE, F + 6.9, z1 + 0.05], 0.06, 0, NI, { round: true });
+    const drape = (height, amp, mat, cy, cz) => {
+      const cw = 1.8, folds = 9, geo = new THREE.PlaneGeometry(cw, height, folds * 4, 1);
+      const pos = geo.attributes.position, uv = geo.attributes.uv;
+      for (let i = 0; i < pos.count; i++) { pos.setZ(i, Math.sin(pos.getX(i) / cw * folds * Math.PI * 2) * amp); uv.setXY(i, uv.getX(i) * cw, uv.getY(i) * height); }
+      geo.computeVertexNormals();
+      b.prim(geo, mat, x0 + 1.1, cy, cz, 0);
+    };
+    drape(5.6, 0.09, 'curtainOgee', F + 4.05, z1 + 0.05);
+    drape(5.9, 0.04, 'curtainLiner', F + 3.9, z1 - 0.28);
+  },
+  // towel ring hanging from a round back plate on a wall face at z (face 's': facing +z, 'n': facing -z)
+  towelRing(b, f) {
+    const { x, y, z } = f, s = f.face === 's' ? 1 : -1, NI = 'nickel';
+    b.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.04, 24), NI, x, y, z + s * 0.02, 0, { rx: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.025, 0.025, 0.08, 10), NI, x, y - 0.03, z + s * 0.07, 0, { rx: Math.PI / 2 });
+    b.prim(new THREE.TorusGeometry(0.035, 0.012, 6, 16), NI, x, y - 0.075, z + s * 0.1);
+    b.prim(new THREE.TorusGeometry(0.25, 0.017, 8, 48), NI, x, y - 0.36, z + s * 0.1);
+  },
+  // double robe hook on a wall face at z: a small back plate, a short lower hook and a longer upper one
+  robeHooks(b, f) {
+    const { x, y, z } = f, s = f.face === 's' ? 1 : -1, NI = 'nickel', P = (dy, dz) => V3(x, y + dy, z + s * dz);
+    b.mbox(x - 0.06, x + 0.06, y - 0.16, y + 0.16, Math.min(z, z + s * 0.035), Math.max(z, z + s * 0.035), NI);
+    for (const [d0, reach, up] of [[-0.07, 0.2, 0.08], [0.07, 0.3, 0.1]]) {
+      b.mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([P(d0, 0.03), P(d0 - 0.02, reach * 0.6), P(d0 + up * 0.3, reach), P(d0 + up, reach * 0.95)]), 16, 0.018, 8), NI);
+      b.prim(new THREE.SphereGeometry(0.03, 10, 8), NI, ...P(d0 + up, reach * 0.95));
+    }
   },
   shower(b, f, mirrors, glass) {
     const [x0, x1, z0, z1] = f.r, F = f.base;
@@ -1213,16 +1837,40 @@ const FURN = {
   },
   table(b, f) {
     const [x0, x1, z0, z1] = f.r, F = f.base, wood = 'stain:' + f.wood;
-    const H = 2.5;
-    b.box(x0, x1, F + H - 0.14, F + H, z0, z1, wood, { dens: 6, bevel: 0.035 });
-    b.box(x0 + 0.25, x1 - 0.25, F + H - 0.45, F + H - 0.14, z0 + 0.25, z1 - 0.25, wood, { skip: ['py'] });
+    const H = 2.5, top = F + H;
     if (f.chair === 'dining') {
+      // moulded top edge (stacked bevelled layers), 0.35 apron, double pedestal: turned vase columns on
+      // four splayed S-curved carved feet
+      b.box(x0, x1, top - 0.06, top, z0, z1, wood, { dens: 6, bevel: 0.025 });
+      b.box(x0 + 0.03, x1 - 0.03, top - 0.1, top - 0.06, z0 + 0.03, z1 - 0.03, wood, { skip: ['py'], dens: 6, bevel: 0.02 });
+      b.box(x0 + 0.015, x1 - 0.015, top - 0.14, top - 0.1, z0 + 0.015, z1 - 0.015, wood, { skip: ['py'], dens: 6, bevel: 0.02 });
+      b.box(x0 + 0.25, x1 - 0.25, top - 0.49, top - 0.14, z0 + 0.25, z1 - 0.25, wood, { skip: ['py'] });
+      const foot = new THREE.Shape();
+      foot.moveTo(0.08, 0.5); foot.bezierCurveTo(0.35, 0.52, 0.42, 0.14, 0.78, 0.12); foot.quadraticCurveTo(0.93, 0.11, 0.92, 0.03);
+      foot.lineTo(0.9, 0); foot.lineTo(0.72, 0); foot.bezierCurveTo(0.55, 0.02, 0.4, 0.3, 0.08, 0.3); foot.lineTo(0.08, 0.5);
+      const pz = (z0 + z1) / 2;
       for (const px of [x0 + 1.1, x1 - 1.1]) {
-        b.prim(new THREE.CylinderGeometry(0.22, 0.35, H - 0.6, 12), wood, px, F + (H - 0.45) / 2 + 0.15, (z0 + z1) / 2);
-        b.box(px - 0.3, px + 0.3, F, F + 0.3, z0 + 0.6, z1 - 0.6, wood, { skip: ['ny'] });
+        b.mesh(turned([px, F + 0.15, pz], [px, top - 0.49, pz], [[0.001, 0], [0.22, 0], [0.22, 0.14], [0.15, 0.19], [0.2, 0.3], [0.25, 0.42],
+          [0.22, 0.55], [0.1, 0.7], [0.15, 0.74], [0.15, 0.77], [0.09, 0.82], [0.13, 0.9], [0.18, 0.93], [0.18, 1], [0.001, 1]], 20), wood);
+        for (let k = 0; k < 4; k++) {
+          const g = new THREE.ExtrudeGeometry(foot, { depth: 0.12, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 10 });
+          g.translate(0, 0.02, -0.06);
+          b.prim(g, wood, px, F, pz, -(Math.PI / 4 + k * Math.PI / 2));
+        }
       }
     } else {
-      for (const [px, pz] of [[x0 + 0.3, z0 + 0.3], [x1 - 0.3, z0 + 0.3], [x0 + 0.3, z1 - 0.3], [x1 - 0.3, z1 - 0.3]]) b.prim(new THREE.CylinderGeometry(0.1, 0.07, H - 0.14, 10), wood, px, F + (H - 0.14) / 2, pz);
+      // breakfast table: top with breadboard ends (grain across), 0.3 apron inset 0.15, four turned legs
+      const T = 0.12, be = 0.25, ab = top - T - 0.3;
+      b.box(x0 + be, x1 - be, top - T, top, z0, z1, wood, { dens: 6, bevel: 0.03 });
+      for (const [xa, xb] of [[x0, x0 + be], [x1 - be, x1]]) {
+        b.box(xa, xb, top - T, top, z0, z1, wood, { dens: 6, bevel: 0.03, uvFaces: { py: [[z0, xa], [z1, xa], [z1, xb], [z0, xb]] } });
+      }
+      b.box(x0 + 0.15, x1 - 0.15, ab, top - T, z0 + 0.15, z1 - 0.15, wood, { skip: ['py'] });
+      for (const lx of [x0 + 0.25, x1 - 0.25]) for (const lz of [z0 + 0.25, z1 - 0.25]) {
+        b.mbox(lx - 0.1, lx + 0.1, ab - 0.25, ab, lz - 0.1, lz + 0.1, wood);         // square top block
+        b.mesh(turned([lx, F, lz], [lx, ab - 0.25, lz], [[0.001, 0], [0.066, 0], [0.07, 0.02], [0.075, 0.3], [0.08, 0.45], [0.09, 0.5],
+          [0.09, 0.53], [0.07, 0.56], [0.078, 0.62], [0.098, 0.74], [0.075, 0.86], [0.088, 0.9], [0.088, 0.93], [0.07, 0.955], [0.092, 0.98], [0.092, 1], [0.001, 1]]), wood);
+      }
     }
     b.collider(x0, x1, F, F + H, z0, z1);
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
@@ -1262,13 +1910,14 @@ const FURN = {
       bx(0.02, D - 0.6, F + 1.3, F + 1.88, a, a2, { skip: ['ny'], dens: 5, bevel: 0.16 });
       bx(D - 1.12, D - 0.55, F + 1.7, F + 3.02, a, a2, { skip: ['ny'], dens: 5, bevel: 0.2 });
     }
-    // throw pillows leaning in the corners
-    for (const [pz, tilt] of [[z0 + arm + 0.55, 0.35], [z1 - arm - 0.55, -0.35]]) {
-      const g = new THREE.SphereGeometry(0.72, 20, 14);
-      g.scale(0.28, 0.9, 1);
-      g.rotateX(tilt);
-      g.rotateZ(dx < 0 ? 0.35 : -0.35);
-      b.prim(g, 'fabric:#e7dfcf', X(D - 1.35), F + 2.4, pz);
+    // square throw pillows in the corners: sitting on the seat cushion, their tops leaning back into the back
+    // cushions, each turned and tipped a little (photos 164, 166)
+    for (const [pz, yaw, roll, col] of [[z0 + arm + 0.95, 0.2, 0.12, '#e7dfcf'], [z1 - arm - 0.95, -0.2, -0.1, '#cbbfa8']]) {
+      const g = pillowGeo(), lean = 0.38;
+      g.rotateX(roll);                              // tipped a little in its own plane
+      g.rotateY(dx < 0 ? yaw : -yaw);               // turned slightly toward the middle of the sofa
+      g.rotateZ(dx < 0 ? -lean : lean);             // top back into the back cushion (the back is +u)
+      b.prim(g, 'fabric:' + col, X(D - 1.5), F + 1.88 + 0.66, pz);
     }
     for (const [u, pz] of [[0.25, z0 + 0.25], [D - 0.25, z0 + 0.25], [0.25, z1 - 0.25], [D - 0.25, z1 - 0.25]]) {
       b.prim(new THREE.CylinderGeometry(0.07, 0.05, 0.42, 10), 'stain:#2b1c14', X(u), F + 0.21, pz);
@@ -1486,20 +2135,106 @@ const FURN = {
     b.prim(new THREE.CylinderGeometry(0.95, 0.95, 5.0, 28), 'paint:#e4e2dd', x, F + 2.5, z, 0, { collide: true });
     b.prim(new THREE.CylinderGeometry(0.12, 0.12, 3.0, 10), 'galvanized', x, F + 6.5, z);
   },
-  shelving(b, f) {
-    const [x0, x1, z0, z1] = f.r, F = f.base;
-    for (const y of [0.3, 1.8, 3.3, 4.8, 6.3]) b.box(x0, x1, F + y, F + y + 0.06, z0, z1, 'galvanized', { dens: 3 });
-    for (const [px, pz] of [[x0, z0], [x1 - 0.1, z0], [x0, z1 - 0.1], [x1 - 0.1, z1 - 0.1]]) b.mbox(px, px + 0.1, F, F + 6.6, pz, pz + 0.1, 'galvanized');
-    b.collider(x0, x1, F, F + 6.6, z0, z1);
+  // Garage workshop corner (r = the L's extent): a plywood-topped bench on a 2x4 frame along the north wall
+  // with a return along the west wall, a white pegboard behind it with a narrow shelf and hanging tools, two
+  // wall shelves on standards above, an overhead platform shelf on chains, an office chair; a boxed soffit
+  // across the ceiling and a round duct along the west wall that turns down.
+  workshop(b, f) {
+    const [x0, x1, z0, z1] = f.r, F = f.base, D = 2.3, H = 2.9, C = L.LOW_CEIL, WZ = 0.25, WX = 0.25;
+    const PLY = 'stain:#c6a574', LUM = 'stain:#d5b27d', WHITE = 'paint:#f2f1ec';
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const STUFF = ['paint:#a57b4f', 'paint:#b38a5c', 'paint:#3c4a5a', 'paint:#d8d4c8', 'paint:#2b2b2b', 'paint:#8c6a45'];
+    const boxesOn = (xa, xb, za, zb, y, maxH) => {                     // generic boxes and bins along a shelf
+      for (let x = xa + 0.1; x < xb - 0.5;) {
+        const w = Math.min(0.55 + rnd() * 0.9, xb - 0.05 - x), d = Math.min(zb - za - 0.1, 0.6 + rnd() * 0.6), h = Math.min(maxH, 0.35 + rnd() * 0.45);
+        b.mbox(x, x + w, y, y + h, za + 0.05, za + 0.05 + d, STUFF[(rnd() * STUFF.length) | 0]);
+        x += w + 0.08 + rnd() * 0.35;
+      }
+    };
+    // bench: long run (x0..x1 along the north wall) and return (along the west wall)
+    const runs = [[x0, x1, z0, z0 + D], [x0, x0 + D, z0 + D, z1]];
+    for (const [bx0, bx1, bz0, bz1] of runs) {
+      b.box(bx0, bx1, F + H - 0.06, F + H, bz0, bz1, PLY, { collide: true, dens: 5 });
+      b.box(bx0 + 0.05, bx1 - 0.05, F + 0.5, F + 0.55, bz0 + 0.05, bz1 - 0.05, PLY, { dens: 4 });       // lower shelf
+    }
+    b.box(x0 + D, x1, F + H - 0.35, F + H - 0.06, z0 + D - 0.13, z0 + D, LUM, { skip: ['py'], dens: 5 });   // front rails
+    b.box(x0 + D - 0.13, x0 + D, F + H - 0.35, F + H - 0.06, z0 + D, z1, LUM, { skip: ['py'], dens: 5 });
+    const legs = [[x1 - 0.2, z0 + D - 0.3], [x0 + D + 3.4, z0 + D - 0.3], [x1 - 0.2, z0 + 0.05], [x0 + D + 3.4, z0 + 0.05],
+      [x0 + D - 0.3, z1 - 0.2], [x0 + 0.05, z1 - 0.2], [x0 + D - 0.3, z0 + D - 0.3], [x0 + 0.05, z0 + 0.05]];
+    for (const [lx, lz] of legs) b.mbox(lx, lx + 0.13, F, F + H - 0.06, lz, lz + 0.29, LUM);
+    // pegboard 4 ft tall behind the whole bench, narrow shelf along its top, generic hanging tools
+    const pb0 = F + 3.1, pb1 = pb0 + 4;
+    b.box(WX + 0.04, x1, pb0, pb1, WZ, WZ + 0.04, 'pegboard', { skip: ['nz'], dens: 4 });
+    b.box(WX, WX + 0.04, pb0, pb1, WZ, z1, 'pegboard', { skip: ['nx'], dens: 4 });
+    b.box(WX + 0.04, x1, pb1, pb1 + 0.06, WZ, WZ + 0.45, WHITE, { skip: ['nz'], dens: 5 });
+    b.box(WX, WX + 0.45, pb1, pb1 + 0.06, WZ + 0.45, z1, WHITE, { skip: ['nx'], dens: 5 });
+    for (let i = 0; i < 11; i++) {
+      const tx = x0 + 0.7 + i * 0.85, ty = pb0 + 1.2 + (i % 3) * 0.7, zf = WZ + 0.04;
+      if (i % 3 === 0) { b.mbox(tx - 0.03, tx + 0.03, ty - 0.45, ty + 0.1, zf, zf + 0.06, 'tvBody'); b.mbox(tx - 0.14, tx + 0.14, ty + 0.1, ty + 0.2, zf, zf + 0.08, 'tvBody'); }
+      else if (i % 3 === 1) { b.mbox(tx - 0.16, tx + 0.16, ty - 0.2, ty + 0.1, zf, zf + 0.22, 'paint:#d9a92a'); b.mbox(tx - 0.05, tx + 0.05, ty - 0.55, ty - 0.2, zf, zf + 0.12, 'tvBody'); }
+      else b.mbox(tx - 0.025, tx + 0.025, ty - 0.5, ty + 0.3, zf, zf + 0.03, 'tvBody');
+    }
+    // two wall shelves on white standards and brackets above the pegboard, with boxes and bins
+    for (const sx of [x0 + 0.6, x0 + 3.6, x0 + 6.6, x1 - 0.5]) {
+      b.mbox(sx - 0.03, sx + 0.03, pb1 + 0.2, C - 0.15, WZ, WZ + 0.04, 'plate');
+      for (const y of [7.9, 8.75]) b.mbox(sx - 0.015, sx + 0.015, F + y - 0.3, F + y, WZ + 0.04, WZ + 0.9, 'plate');
+    }
+    for (const [y, mh] of [[7.9, 0.7], [8.75, 0.6]]) {
+      b.box(x0 + 0.1, x1 - 0.1, F + y, F + y + 0.06, WZ, WZ + 1.0, WHITE, { skip: ['nz'], dens: 5 });
+      boxesOn(x0 + 0.1, x1 - 0.1, WZ, WZ + 1.0, F + y + 0.06, mh);
+    }
+    // overhead platform shelf: 2x4 frame, OSB deck about 2 ft below the ceiling, hung on chains, boxes on it
+    const px0 = x0 + 0.7, px1 = x1, pz0 = WZ + 1.2, pz1 = pz0 + 2.4, dy = C - 2;
+    b.box(px0, px1, dy, dy + 0.06, pz0, pz1, 'paint:#b48f5a', { dens: 4 });
+    for (const zz of [pz0, pz1 - 0.13]) b.box(px0, px1, dy - 0.29, dy, zz, zz + 0.13, LUM, { skip: ['py'], dens: 4 });
+    for (let xx = px0; xx < px1; xx += 2) b.mbox(xx, xx + 0.13, dy - 0.29, dy, pz0 + 0.13, pz1 - 0.13, LUM);
+    for (const xx of [px0 + 0.2, (px0 + px1) / 2, px1 - 0.2]) for (const zz of [pz0 + 0.07, pz1 - 0.07]) {
+      b.prim(new THREE.CylinderGeometry(0.018, 0.018, C - dy - 0.06, 6), 'galvanized', xx, (C + dy + 0.06) / 2, zz);
+    }
+    boxesOn(px0, px1, pz0, pz1, dy + 0.06, 1.0);
+    officeChair(b, x0 + 5.3, z0 + D + 1.1, F);
+    // boxed soffit across the ceiling; a 6" round duct along the west wall under the ceiling, turning down
+    b.box(WX, 18.1, C - 0.8, C, 8.4, 9.6, 'paint:' + L.PAINT.garage, { skip: ['py', 'nx', 'px'] });
+    const dx = WX + 0.36, dyc = C - 0.35, zt = z0 + 1.3;
+    const duct = new THREE.CurvePath();
+    duct.add(new THREE.LineCurve3(V3(dx, dyc, 8.4), V3(dx, dyc, zt + 0.5)));
+    duct.add(new THREE.QuadraticBezierCurve3(V3(dx, dyc, zt + 0.5), V3(dx, dyc, zt), V3(dx, dyc - 0.5, zt)));
+    duct.add(new THREE.LineCurve3(V3(dx, dyc - 0.5, zt), V3(dx, pb1 + 0.3, zt)));
+    b.mesh(new THREE.TubeGeometry(duct, 40, 0.25, 16), 'galvanized');
+    b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.02, 16), 'galvanized', dx, pb1 + 0.3, zt);
+    for (const zz of [7.4, 5.4, 3.4]) b.mbox(WX, dx, dyc + 0.2, dyc + 0.26, zz - 0.04, zz + 0.04, 'galvanized');   // straps
   },
-  workbench(b, f) {
+  // grey steel two-door storage cabinet, doors facing west (x0)
+  steelCabinet(b, f) {
+    const [x0, x1, z0, z1] = f.r, F = f.base, H = f.h, zm = (z0 + z1) / 2;
+    b.box(x0, x1, F, F + H, z0, z1, 'paint:#8f9398', { skip: ['px', 'ny'], collide: true, bevel: 0.02 });
+    b.mbox(x0 - 0.005, x0 + 0.002, F + 0.15, F + H - 0.15, zm - 0.008, zm + 0.008, 'paint:#2b2d30');
+    for (const dz of [-0.12, 0.12]) b.mbox(x0 - 0.06, x0, F + 3.1, F + 3.7, zm + dz - 0.015, zm + dz + 0.015, 'nickel');
+    for (const zc of [(z0 + zm) / 2, (zm + z1) / 2]) for (const y of [F + 0.5, F + 0.6, F + 0.7, F + H - 0.7, F + H - 0.6, F + H - 0.5]) {
+      b.mbox(x0 - 0.004, x0 + 0.002, y - 0.012, y + 0.012, zc - 0.35, zc + 0.35, 'paint:#3c3f43');   // louvres
+    }
+  },
+  // plank shelf on white brackets against the wall on the x1 side, board top at base + y
+  plankShelf(b, f) {
+    const [x0, x1, z0, z1] = f.r, F = f.base, y = F + f.y;
+    b.box(x0, x1, y, y + 0.08, z0, z1, 'stain:#b58e5c', { skip: ['px'], dens: 5 });
+    for (let z = z0 + 0.4; z < z1; z += 2.4) {
+      b.mbox(x1 - 0.04, x1, y - 0.8, y, z - 0.02, z + 0.02, 'plate');
+      b.mbox(x0 + 0.1, x1, y - 0.06, y, z - 0.02, z + 0.02, 'plate');
+    }
+    for (const [za, w, h, m] of [[z0 + 0.3, 1.1, 0.6, 'paint:#a57b4f'], [z0 + 1.6, 0.8, 0.45, 'paint:#3c4a5a'], [z0 + 3.2, 1.2, 0.7, 'paint:#b38a5c']]) b.mbox(x0 + 0.1, x1 - 0.1, y + 0.08, y + 0.08 + h, za, za + w, m);
+  },
+  doorMat(b, f) {
     const [x0, x1, z0, z1] = f.r, F = f.base;
-    b.box(x0, x1, F + 2.9, F + 3.05, z0, z1, 'stain:#a07c52', { collide: true });
-    b.box(x0, x1, F + 0.5, F + 0.56, z0 + 0.1, z1 - 0.1, 'stain:#a07c52');
-    for (const [px, pz] of [[x0, z0], [x1 - 0.2, z0], [x0, z1 - 0.2], [x1 - 0.2, z1 - 0.2]]) b.mbox(px, px + 0.2, F, F + 2.9, pz, pz + 0.2, 'stain:#a07c52');
-    b.box(x0, x1, F + 3.05, F + 5.2, z0 - 0.02, z0 + 0.04, 'pegboard', { dens: 4 });
+    b.box(x0, x1, F, F + 0.03, z0, z1, 'fabric:#3b3733', { skip: ['ny'], dens: 4 });
   },
   fridge(b, f) {
+    if (f.face === 'w') {
+      // built facing south in a frame turned so the front faces west (back to the wall on the east)
+      const [x0, x1, z0, z1] = f.r, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, hx = (x1 - x0) / 2, hz = (z1 - z0) / 2;
+      return rotated(b, cx, cz, -Math.PI / 2, sub => FURN.fridge(sub, { ...f, face: 's', r: [cx - hz, cx + hz, cz - hx, cz + hx] }));
+    }
     const [x0, x1, z0, z1] = f.r, F = f.base;
     b.box(x0, x1, F, F + 5.6, z0, z1, 'enamelWhite', { skip: ['ny'], collide: true });
     b.box(x0 + 0.02, x1 - 0.02, F + 3.9, F + 3.93, z1, z1 + 0.01, 'paint:#bdbbb6');
@@ -1636,58 +2371,175 @@ function sleighPanel(b, x0, x1, z0, z1, F, H, wood, axis) {
   }
   if (axis === 'z') b.collider(x0, x1, F, F + H, z0, z1); else b.collider(x0, x1, F, F + H, z0, z1);
 }
-function chair(b, x, z, F, face, wood, style) {
-  const [dx, dz] = faceDir(face);
-  const dining = style === 'dining';
-  const s = dining ? 0.95 : 0.85;
-  // local frame: forward (toward the table) = (dx, dz), side = perpendicular
-  const fx = dx, fz = dz, sx = -dz, sz = dx;
-  const P = (f, sd) => [x + fx * f + sx * sd, z + fz * f + sz * sd];
-  const ang = Math.atan2(fx, fz);
-  if (dining) {
-    const seat = new THREE.BoxGeometry(2 * s - 0.05, 0.22, 2 * s - 0.1);
-    b.prim(seat, wood, x, F + 1.42, z, ang);
-    const cush = new THREE.BoxGeometry(2 * s - 0.2, 0.2, 2 * s - 0.3, 1, 1, 1);
-    const pos = cush.attributes.position;
-    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0) { pos.setX(i, pos.getX(i) * 0.92); pos.setZ(i, pos.getZ(i) * 0.9); }
-    cush.computeVertexNormals();
-    b.prim(cush, 'fabric:#6b5238', x, F + 1.62, z, ang);
-  } else {
-    b.prim(new THREE.BoxGeometry(2 * s, 0.14, 2 * s), wood, x, F + 1.5, z, ang);
-  }
-  for (const [f, sd] of [[s - 0.12, s - 0.12], [s - 0.12, -s + 0.12], [-s + 0.12, s - 0.12], [-s + 0.12, -s + 0.12]]) {
-    const [px, pz] = P(f, sd);
-    b.prim(new THREE.CylinderGeometry(0.07, dining ? 0.045 : 0.05, 1.35, 10), wood, px, F + 0.67, pz);
-  }
-  // back
-  const H = dining ? 3.75 : 3.25;
-  const back = -s + 0.08;
-  for (const sd of [s - 0.1, -s + 0.1]) {
-    const [px, pz] = P(back, sd);
-    b.prim(new THREE.CylinderGeometry(0.065, 0.075, H - 1.45, 10), wood, px, F + 1.45 + (H - 1.45) / 2, pz);
-  }
-  if (dining) {
-    // arched top rail + vase-shaped splat
-    const arc = new THREE.CatmullRomCurve3([-s + 0.1, -0.4, 0, 0.4, s - 0.1].map((sd, i) => {
-      const [px, pz] = P(back, sd); return new THREE.Vector3(px, F + H - 0.12 + [0, 0.12, 0.18, 0.12, 0][i], pz);
-    }));
-    b.mesh(new THREE.TubeGeometry(arc, 16, 0.075, 8), wood);
-    const sh = new THREE.Shape();
-    sh.moveTo(-0.18, 0); sh.bezierCurveTo(-0.34, 0.5, -0.12, 0.9, -0.26, 1.4); sh.bezierCurveTo(-0.34, 1.8, -0.22, 1.95, -0.2, 2.05);
-    sh.lineTo(0.2, 2.05); sh.bezierCurveTo(0.22, 1.95, 0.34, 1.8, 0.26, 1.4); sh.bezierCurveTo(0.12, 0.9, 0.34, 0.5, 0.18, 0); sh.lineTo(-0.18, 0);
-    const splat = new THREE.ExtrudeGeometry(sh, { depth: 0.06, bevelEnabled: false, curveSegments: 8 });
-    splat.translate(0, 0, -0.03);
-    const [px, pz] = P(back, 0);
-    b.prim(splat, wood, px, F + 1.55, pz, ang);
-  } else {
-    const [tx, tz] = P(back, 0);
-    b.prim(new THREE.BoxGeometry(2 * s - 0.2, 0.3, 0.1), wood, tx, F + H - 0.15, tz, ang);
-    for (let i = -2; i <= 2; i++) {
-      const [px, pz] = P(back, i * 0.28);
-      b.prim(new THREE.CylinderGeometry(0.03, 0.03, H - 1.8, 6), wood, px, F + 1.55 + (H - 1.8) / 2, pz);
+// Lathe along the segment p0 → p1; profile [[r, t], ...], t = 0..1 from p0 to p1.
+function turned(p0, p1, profile, seg = 14, phi = 0) {
+  const a = new THREE.Vector3(...p0), d = new THREE.Vector3(...p1).sub(a), len = d.length();
+  const g = new THREE.LatheGeometry(profile.map(([r, t]) => new THREE.Vector2(r, t * len)), seg, phi);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  g.translate(a.x, a.y, a.z);
+  return g;
+}
+// Tube along a curve with its radius following rf(t), t = 0..1 along the curve.
+function taperTube(curve, rf, segs = 24, radial = 8, closed = false) {
+  const g = new THREE.TubeGeometry(curve, segs, 1, radial, closed), pos = g.attributes.position;
+  const c = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i <= segs; i++) {
+    curve.getPointAt(i / segs, c);
+    for (let j = 0; j <= radial; j++) {
+      const k = i * (radial + 1) + j;
+      v.fromBufferAttribute(pos, k).sub(c).multiplyScalar(rf(i / segs)).add(c);
+      pos.setXYZ(k, v.x, v.y, v.z);
     }
   }
+  g.computeVertexNormals();
+  return g;
+}
+// piecewise-linear [[t, v], ...] → function of t
+const ramp = pts => t => {
+  for (let i = 1; i < pts.length; i++) if (t <= pts[i][0]) return pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * (t - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0]);
+  return pts[pts.length - 1][1];
+};
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+// A flat board in a chair back: runs x0 → x1 between edge heights yb(x) and yt(x), `thick` deep, centred on
+// z = zAt(x, y) (the back's rake and bend).
+function backBoard(x0, x1, yb, yt, thick, zAt, n = 16) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n; pts.push(new THREE.Vector2(x, yb(x))); }
+  for (let i = n; i >= 0; i--) { const x = x0 + (x1 - x0) * i / n; pts.push(new THREE.Vector2(x, yt(x))); }
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: thick, bevelEnabled: false });
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) - thick / 2 + zAt(pos.getX(i), pos.getY(i)));
+  g.computeVertexNormals();
+  return g;
+}
+
+// Chairs are built in a local frame (+z toward the table, y up from the floor) and turned into place.
+// Square throw pillow (x = thickness, y = height, z = width): plump in the middle, thin at the seams, the corners
+// pinched in a little.
+function pillowGeo(w = 1.55, th = 0.5) {
+  const g = new THREE.BoxGeometry(th, w, w, 2, 12, 12), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const sy = p.getY(i) / (w / 2), sz = p.getZ(i) / (w / 2);
+    const k = Math.sqrt(Math.max(0, (1 - sy ** 4) * (1 - sz ** 4))), c = 1 - 0.07 * sy * sy * sz * sz;
+    p.setXYZ(i, p.getX(i) * (0.12 + 0.88 * k), p.getY(i) * c, p.getZ(i) * c);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+function chair(b, x, z, F, face, wood, style) {
+  const [dx, dz] = faceDir(face);
+  const put = (g, mat = wood) => b.prim(g, mat, x, F, z, Math.atan2(dx, dz));
+  const s = style === 'dining' ? diningChair(put) : wheatChair(put);
   b.collider(x - s, x + s, F, F + 1.7, z - s, z + s);
+}
+
+// Wheat-back (sheaf-back) Windsor: dished saddle seat, splayed turned legs with an H-stretcher and a front
+// stretcher, turned back posts with acorn finials, a bent crest rail and a lower back rail joined by a fan
+// of spindles gathered into a sheaf half way up.
+function wheatChair(put) {
+  const seat = new THREE.BoxGeometry(1.35, 0.12, 1.3, 14, 1, 14), sp = seat.attributes.position;
+  for (let i = 0; i < sp.count; i++) {
+    let u = sp.getX(i) / 0.675, v = sp.getZ(i) / 0.65;
+    const m = Math.max(Math.abs(u), Math.abs(v));
+    if (m > 1e-6) { const k = m / Math.pow(u ** 4 + v ** 4, 0.25); u *= k; v *= k; }      // rounded (superellipse) plan
+    const dish = sp.getY(i) > 0 ? 0.035 * Math.max(0, 1 - u * u - (v + 0.1) ** 2) : 0;
+    sp.setXYZ(i, u * 0.675, sp.getY(i) + 1.44 - dish, v * 0.65);
+  }
+  seat.computeVertexNormals();
+  put(seat);
+  // legs splayed about 5 degrees, turned with a vase and rings
+  const legs = [[-0.45, 0.38], [0.45, 0.38], [-0.45, -0.36], [0.45, -0.36]].map(([lx, lz]) => ({
+    top: [lx, 1.39, lz], foot: [lx + Math.sign(lx) * 0.12, 0, lz + Math.sign(lz) * 0.1] }));
+  const legAt = (l, y) => l.foot.map((c, i) => c + (l.top[i] - c) * y / 1.39);
+  for (const l of legs) put(turned(l.foot, l.top, [[0.001, 0], [0.042, 0], [0.045, 0.06], [0.055, 0.35], [0.062, 0.4], [0.045, 0.43],
+    [0.058, 0.5], [0.07, 0.7], [0.06, 0.9], [0.045, 0.97], [0.045, 1], [0.001, 1]], 12));
+  const stretch = [[0.001, 0], [0.028, 0], [0.03, 0.1], [0.042, 0.5], [0.03, 0.9], [0.028, 1], [0.001, 1]];
+  const sides = [[0, 2], [1, 3]].map(([f, k]) => [legAt(legs[f], 0.5), legAt(legs[k], 0.5)]);
+  for (const [p, q] of sides) put(turned(p, q, stretch, 10));
+  const mid = sides.map(([p, q]) => p.map((c, i) => (c + q[i]) / 2));
+  put(turned(mid[0], mid[1], stretch, 10));                                              // H-stretcher
+  put(turned(legAt(legs[0], 0.62), legAt(legs[1], 0.62), stretch, 10));                 // front stretcher
+  // back: posts raked back; crest rail and lower rail bent back; spindles in a sheaf
+  const zb = y => -0.5 - (y - 1.46) * 0.13, bow = x => 0.07 * (1 - (x / 0.5) ** 2), zAt = (x, y) => zb(y) - bow(x);
+  for (const sx of [-1, 1]) {
+    put(turned([sx * 0.5, 1.46, zb(1.46)], [sx * 0.52, 3.3, zb(3.3)], [[0.001, 0], [0.05, 0], [0.052, 0.05], [0.04, 0.15], [0.048, 0.45],
+      [0.042, 0.6], [0.038, 0.95], [0.04, 1], [0.001, 1]], 12));
+    const acorn = new THREE.SphereGeometry(0.05, 12, 8); acorn.scale(1, 1.35, 1);
+    acorn.translate(sx * 0.52, 3.36, zb(3.36)); put(acorn);
+  }
+  const cb = x => 2.98 + 0.03 * (1 - (x / 0.47) ** 2);
+  put(backBoard(-0.5, 0.5, cb, x => 3.21 + 0.06 * (1 - (x / 0.5) ** 2), 0.07, zAt));             // crest
+  put(backBoard(-0.5, 0.5, () => 2.0, () => 2.1, 0.06, zAt));                                    // lower rail
+  for (let i = 0; i < 9; i++) {
+    const u = (i - 4) / 4, pt = (x, y) => V3(x, y, zAt(x, y));
+    const path = new THREE.CatmullRomCurve3([pt(u * 0.4, cb(u * 0.4) + 0.02), pt(u * 0.2, 2.65), pt(u * 0.05, 2.35), pt(u * 0.3, 2.08)], false, 'centripetal');
+    put(new THREE.TubeGeometry(path, 16, 0.016, 5));
+  }
+  const band = new THREE.CylinderGeometry(0.1, 0.1, 0.07, 16); band.scale(1, 1, 0.45); band.translate(0, 2.35, zAt(0, 2.35)); put(band);   // sheaf
+  return 0.7;
+}
+
+// Dining chair: cabriole front legs with carved knees, straight rear legs splayed back, a serpentine
+// upholstered seat in brocade, an open back with an interlaced figure-8 splat and small volutes, and an
+// arched crest rail with scrolled ends and a carved shell at its centre.
+function diningChair(put) {
+  const zf = u => 0.78 + 0.05 * Math.cos(1.5 * Math.PI * u);                     // serpentine front edge
+  const outline = (inset, back) => {
+    const pts = [[0.8 - inset, back], [-0.8 + inset, back]];
+    for (let i = 0; i <= 16; i++) { const u = -1 + 2 * i / 16; pts.push([u * (0.88 - inset), zf(u) - inset]); }
+    return new THREE.Shape(pts.map(([px, pz]) => new THREE.Vector2(px, pz)));
+  };
+  const flat = (shape, y0, y1, o = {}) => {
+    const bt = o.bevelThickness || 0;
+    const g = new THREE.ExtrudeGeometry(shape, { depth: y1 - y0 - 2 * bt, bevelEnabled: !!bt, curveSegments: 12, ...o });
+    g.rotateX(Math.PI / 2); g.translate(0, y1 - bt, 0);
+    return g;
+  };
+  put(flat(outline(0, -0.78), 1.28, 1.42));                                                  // seat rails
+  put(flat(outline(0.06, -0.64), 1.42, 1.6, { bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 3 }), 'brocade');
+  put(new THREE.BoxGeometry(0.5, 0.2, 0.14).translate(0, 1.52, -0.72));                     // shoe under the splat
+  // cabriole front legs: knee forward, ankle back, pad foot; a small carving on each knee
+  for (const sx of [-1, 1]) {
+    const lx = sx * 0.74, P = (y, dz) => V3(lx, y, 0.62 + dz);
+    put(taperTube(new THREE.CatmullRomCurve3([P(1.3, 0), P(1.06, 0.08), P(0.72, 0), P(0.3, -0.06), P(0.1, -0.01), P(0.02, 0.05)]),
+      ramp([[0, 0.07], [0.12, 0.085], [0.45, 0.055], [0.8, 0.035], [1, 0.045]]), 24, 10));
+    const knee = new THREE.SphereGeometry(0.06, 10, 8); knee.scale(0.9, 1.3, 0.45); knee.translate(lx, 1.08, 0.75); put(knee);
+    const pad = new THREE.SphereGeometry(0.07, 12, 8); pad.scale(1, 0.45, 1.1); pad.translate(lx, 0.03, 0.68); put(pad);
+  }
+  // rear legs splayed back, and the stiles above the seat raked back
+  const zb = y => -0.72 - (y - 1.4) * 0.107, lean = (x, y) => zb(y);
+  for (const sx of [-1, 1]) {
+    put(turned([sx * 0.74, 0, -0.95], [sx * 0.72, 1.4, zb(1.4)], [[0.001, 0], [0.042, 0], [0.058, 1], [0.001, 1]], 4, Math.PI / 4));
+    put(turned([sx * 0.72, 1.4, zb(1.4)], [sx * 0.7, 3.5, zb(3.5)], [[0.001, 0], [0.058, 0], [0.045, 1], [0.001, 1]], 4, Math.PI / 4));
+  }
+  // crest: arched, ears flicking up into scrolls, a scalloped shell in the middle
+  const cu = x => x / 0.74;
+  put(backBoard(-0.74, 0.74, x => 3.3 + 0.06 * (1 - cu(x) ** 2), x => 3.48 + 0.1 * (1 - cu(x) ** 2) + 0.4 * Math.max(0, Math.abs(cu(x)) - 0.85), 0.08, lean, 24));
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.TorusGeometry(0.05, 0.016, 6, 14, Math.PI * 1.6);
+    ear.rotateZ(sx > 0 ? -0.6 : Math.PI + 0.6); ear.translate(sx * 0.73, 3.52, zb(3.52) + 0.04); put(ear);
+  }
+  const shell = new THREE.Shape();
+  shell.moveTo(-0.175, 0);
+  for (let i = 0; i <= 36; i++) { const a = Math.PI - Math.PI * i / 36, r = 0.175 * (1 - 0.07 * Math.abs(Math.sin(4.5 * (Math.PI - a)))); shell.lineTo(r * Math.cos(a), 0.9 * r * Math.sin(a)); }
+  const sg = new THREE.ExtrudeGeometry(shell, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 2 });
+  sg.translate(0, 3.4, zb(3.4) + 0.04); put(sg);
+  // open back: two figure-8 ribbons crossing each other, a hair apart in depth, and volutes at the top
+  for (const k of [-1, 1]) {
+    const pts = [];
+    for (let i = 0; i < 28; i++) {
+      const th = 2 * Math.PI * i / 28, y = 2.49 + 0.8 * Math.cos(th);
+      pts.push(V3(k * 0.09 + 0.24 * Math.sin(th) * (1 - 0.7 * Math.sin(th) ** 2), y, zb(y) + k * 0.014));
+    }
+    const g = taperTube(new THREE.CatmullRomCurve3(pts, true, 'centripetal'), () => 0.032, 72, 6, true);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const zc = zb(pos.getY(i)) + k * 0.014; pos.setZ(i, zc + (pos.getZ(i) - zc) * 0.45); }   // flat ribbon
+    g.computeVertexNormals();
+    put(g);
+    const vol = new THREE.TorusGeometry(0.06, 0.015, 6, 14, Math.PI * 1.7);
+    vol.rotateZ(k > 0 ? -1.2 : Math.PI + 1.2); vol.translate(k * 0.36, 3.2, zb(3.2)); put(vol);
+  }
+  return 0.9;
 }
 function appliance(b, f, front) {
   // the cabinet stands on four levelling feet (keeps its lower edges clear of the floor)
@@ -1699,40 +2551,107 @@ function appliance(b, f, front) {
 }
 
 // ================================================================ exterior ===
-// Roof: a 5/12 gable over the main block (ridge running east-west), a low shed over the
-// living-room bump-out and porch, and a shed over the rear stair annex. h = height at z[0], z[1].
-const RC = L.MAIN_CEIL;
-const ROOF_PLANES = [
-  { x: [-1, 46], z: [-1, 13.95], h: [RC + 0.48, RC + 6.7] },
-  { x: [-1, 46], z: [13.95, 28.9], h: [RC + 6.7, RC + 0.48] },
-  { x: [20.3, 46], z: [27.9, 37.2], h: [RC + 0.9, RC + 0.15] },
-  { x: [34.5, 46], z: [-9, 0], h: [L.annexCeil(-9) + 0.75, L.annexCeil(0) + 0.75] },   // lean-to over the rear stairs
+// Roof (from the aerial view): a 5/12 hip over the main block, and a hipped front wing over the entry bay and
+// the living-room bump-out. The wing's east slope carries on the main roof's east hip in one plane; its west
+// slope meets the main front slope in a valley. Eaves all round at EAVE. A shed over the rear stair annex.
+const RC = L.MAIN_CEIL, EAVE = RC + 0.48, PITCH = 6.22 / 14.95;
+const RX0 = -1, RX1 = 46, RZ0 = -1, RZ1 = L.UP_BR_Z + L.EXT_T / 2 + 0.75, WX = 19.85, WZ = 37.6;   // eaves 0.75 out; WZ 0.5 past the bow apex
+const RIDGE_Z = (RZ0 + RZ1) / 2, HX0 = RX0 + (RIDGE_Z - RZ0), HX1 = RX1 - (RIDGE_Z - RZ0);   // main ridge, HX0..HX1
+const WXR = (WX + RX1) / 2, WZA = WZ - (RX1 - WX) / 2, WZV = RZ1 - (WXR - WX);        // wing ridge x, its front apex and valley top
+// each facet: h = EAVE + PITCH * (up · (x, z) - c), drawn as convex plan polygons (mid: a rectangle cut round skylights)
+const HIP = [
+  { up: [0, 1], c: RZ0, polys: [[[RX0, RZ0], [HX0, RZ0], [HX0, RIDGE_Z]], [[HX1, RZ0], [RX1, RZ0], [HX1, RIDGE_Z]]], mid: [HX0, HX1, RZ0, RIDGE_Z] },   // back
+  { up: [0, -1], c: -RZ1, polys: [[[RX0, RZ1], [HX0, RIDGE_Z], [HX1, RIDGE_Z], [WXR, WZV], [WX, RZ1]]] },                    // front, to the valley
+  { up: [1, 0], c: RX0, polys: [[[RX0, RZ0], [HX0, RIDGE_Z], [RX0, RZ1]]] },                                                   // west hip
+  { up: [-1, 0], c: -RX1, polys: [[[RX1, RZ0], [HX1, RIDGE_Z], [WXR, WZV]], [[WXR, WZV], [WXR, WZA], [RX1, WZ], [RX1, RZ0]]] },   // east
+  { up: [1, 0], c: WX, polys: [[[WX, RZ1], [WXR, WZV], [WXR, WZA], [WX, WZ]]] },                                               // wing, west
+  { up: [0, -1], c: -WZ, polys: [[[WX, WZ], [WXR, WZA], [RX1, WZ]]] },                                                         // wing, front
 ];
+const hipH = (f, x, z) => EAVE + PITCH * (f.up[0] * x + f.up[1] * z - f.c);
+// top of the hip roof over a point (the wing where it rises above the main roof), -Infinity outside it
+function hipTop(x, z) {
+  let h = -Infinity;
+  if (x >= RX0 && x <= RX1 && z >= RZ0 && z <= RZ1) h = Math.min(...HIP.slice(0, 4).map(f => hipH(f, x, z)));
+  if (x >= WX && x <= RX1 && z >= WZV && z <= WZ) h = Math.max(h, Math.min(...[3, 4, 5].map(i => hipH(HIP[i], x, z))));
+  return h;
+}
+const LEAN = { x: [34.5, 46], z: [-9, 0], h: [L.annexCeil(-9) + 0.75, L.annexCeil(0) + 0.75] };   // lean-to over the rear stairs
 const planeH = (p, z) => p.h[0] + (p.h[1] - p.h[0]) * (z - p.z[0]) / (p.z[1] - p.z[0]);
 // underside of the lowest roof over a point (NaN if none)
 export function roofUnder(x, z) {
-  let h = Infinity;
-  for (const p of ROOF_PLANES) if (x >= p.x[0] && x <= p.x[1] && z >= p.z[0] - 1e-6 && z <= p.z[1] + 1e-6) h = Math.min(h, planeH(p, z) - 0.12);
-  return h === Infinity ? NaN : h;
+  let h = hipTop(x, z);
+  if (x >= LEAN.x[0] && x <= LEAN.x[1] && z >= LEAN.z[0] - 1e-6 && z <= LEAN.z[1] + 1e-6) h = Math.min(h === -Infinity ? Infinity : h, planeH(LEAN, z));
+  return h === -Infinity ? NaN : h - 0.12;
+}
+// planar polygon with explicit uvs, wound to face n
+function polyUV(b, pts, uv, mat, n, o = {}) {
+  let ny = 0;
+  for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; ny += (p[2] - q[2]) * (p[0] + q[0]); }
+  if (ny * n[1] < 0) { pts = pts.slice().reverse(); uv = uv.slice().reverse(); }
+  b.poly(pts, mat, { ...o, n, uv });
 }
 
 function exterior(b) {
-  const holes = L.SKYLIGHTS.map(([a0, a1, c0, c1]) => [a0 - 0.2, a1 + 0.2, c0 - 0.2, c1 + 0.2]);
-  for (const p of ROOF_PLANES) {
+  // ---- roof: shingles (courses along each eave), white soffit under it, fascia and gutters on the eaves
+  const holes = L.SKYLIGHTS.map(sk => (sk.lean ? skylightShaft(sk).glass : sk.r)).map(([a0, a1, c0, c1]) => [a0 - 0.2, a1 + 0.2, c0 - 0.2, c1 + 0.2]);
+  const slopeLen = Math.hypot(1, PITCH);
+  for (const f of HIP) {
+    const polys = f.polys.slice();
+    if (f.mid) {
+      const [x0, x1, z0, z1] = f.mid, hs = holes.filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1);
+      for (const [a0, a1, c0, c1] of rectMinus(f.mid, hs)) if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) polys.push([[a0, c0], [a1, c0], [a1, c1], [a0, c1]]);
+    }
+    for (const P of polys) {
+      const uv = P.map(([x, z]) => [f.up[1] * x - f.up[0] * z, (f.up[0] * x + f.up[1] * z - f.c) * slopeLen]);
+      polyUV(b, P.map(([x, z]) => [x, hipH(f, x, z), z]), uv, 'roof', [0, 1, 0], { dens: 0.8 });
+      b.poly(P.map(([x, z]) => [x, hipH(f, x, z) - 0.12, z]), 'soffit', { n: [0, -1, 0], dens: 0.8 });
+    }
+  }
+  // eaves, anticlockwise from the back-west corner: [x0, z0, x1, z1, outward normal, gutter end extensions]
+  const EAVES = [
+    [RX0, RZ0, RX1, RZ0, [0, 0, -1], [0.4, 0.4]], [RX1, RZ0, RX1, WZ, [1, 0, 0], [0.4, 0.4]], [RX1, WZ, WX, WZ, [0, 0, 1], [0.4, 0.4]],
+    [WX, WZ, WX, RZ1, [-1, 0, 0], [0.4, 0]], [WX, RZ1, RX0, RZ1, [0, 0, 1], [0, 0.4]], [RX0, RZ1, RX0, RZ0, [-1, 0, 0], [0.4, 0.4]],
+  ];
+  for (const [x0, z0, x1, z1, n, [e0, e1]] of EAVES) {
+    b.poly([[x0, EAVE - 0.55, z0], [x1, EAVE - 0.55, z1], [x1, EAVE + 0.02, z1], [x0, EAVE + 0.02, z0]], 'soffit', { n, dens: 1.5 });
+    // K-style gutter just outside the fascia
+    const ux = Math.sign(x1 - x0), uz = Math.sign(z1 - z0), span = (a, b2, o) => [Math.min(a, b2) + o, Math.max(a, b2) + o];
+    const [gx0, gx1] = ux ? span(x0 - ux * e0, x1 + ux * e1, 0) : span(x0 + n[0] * 0.01, x0 + n[0] * 0.41, 0);
+    const [gz0, gz1] = uz ? span(z0 - uz * e0, z1 + uz * e1, 0) : span(z0 + n[2] * 0.01, z0 + n[2] * 0.41, 0);
+    b.mbox(gx0, gx1, EAVE - 0.45, EAVE - 0.05, gz0, gz1, 'vinyl');
+  }
+  // three downspouts down the walls, each with an offset under the soffit up into its gutter
+  const UZ = L.UP_BR_Z + L.EXT_T / 2;   // 30.25: outer face of the upper bedroom wall
+  for (const [x, z, gx, gz, y0 = 0] of [[0.45, UZ + 0.17, 0.45, RZ1 + 0.21, L.SOFFIT_Y - 0.6], [45.42, 34.5, 46.21, 34.5], [0.45, -0.42, 0.45, -1.21]]) {
+    b.mbox(x - 0.12, x + 0.12, y0, EAVE - 0.8, z - 0.15, z + 0.15, 'vinyl');
+    b.mbox(Math.min(x, gx) - 0.12, Math.max(x, gx) + 0.12, EAVE - 1.1, EAVE - 0.8, Math.min(z, gz) - 0.12, Math.max(z, gz) + 0.12, 'vinyl');
+    b.mbox(gx - 0.12, gx + 0.12, EAVE - 0.8, EAVE - 0.45, gz - 0.12, gz + 0.12, 'vinyl');
+  }
+  // the front one kicks back under the soffit to the garage wall and runs down it
+  b.mbox(0.33, 0.57, L.SOFFIT_Y - 0.6, L.SOFFIT_Y - 0.3, 28.17, UZ + 0.32, 'vinyl');
+  b.mbox(0.33, 0.57, 0, L.SOFFIT_Y - 0.3, 28.17, 28.47, 'vinyl');
+  // small vent stack near the ridge
+  const vx = 25.1, vz = 12.9, vy = hipH(HIP[0], vx, vz - 0.5) - 0.3;
+  b.mbox(vx - 0.5, vx + 0.5, vy, vy + 2.3, vz - 0.5, vz + 0.5, 'stoneCap');
+  b.mbox(vx - 0.6, vx + 0.6, vy + 2.3, vy + 2.45, vz - 0.6, vz + 0.6, 'galvanized');
+  // lean-to over the rear stairs: shingles, underside, fascia on its eave and rakes
+  {
+    const p = LEAN, top = z => planeH(p, z), bot = z => planeH(p, z) - 0.12;
     const hs = holes.filter(([a0, a1, c0, c1]) => a0 >= p.x[0] && a1 <= p.x[1] && c0 >= p.z[0] && c1 <= p.z[1]);
+    const k = (p.h[1] - p.h[0]) / (p.z[1] - p.z[0]), sl = Math.hypot(1, k);
     for (const [a0, a1, c0, c1] of rectMinus([p.x[0], p.x[1], p.z[0], p.z[1]], hs)) {
-      const top = z => planeH(p, z), bot = z => planeH(p, z) - 0.12;
-      b.poly([[a0, top(c0), c0], [a1, top(c0), c0], [a1, top(c1), c1], [a0, top(c1), c1]], 'roof', { n: [0, 1, 0], dens: 0.8 });
+      const pts = [[a0, top(c0), c0], [a1, top(c0), c0], [a1, top(c1), c1], [a0, top(c1), c1]];
+      polyUV(b, pts, pts.map(([x, , z]) => [-x, (z - p.z[0]) * sl]), 'roof', [0, 1, 0], { dens: 0.8 });
       b.poly([[a0, bot(c0), c0], [a1, bot(c0), c0], [a1, bot(c1), c1], [a0, bot(c1), c1]], 'soffit', { n: [0, -1, 0], dens: 0.8 });
     }
-    // fascia boards on the eaves and rakes
-    const lowZ = p.h[0] < p.h[1] ? p.z[0] : p.z[1], lowH = Math.min(...p.h);
-    b.poly([[p.x[0], lowH - 0.55, lowZ], [p.x[1], lowH - 0.55, lowZ], [p.x[1], lowH + 0.02, lowZ], [p.x[0], lowH + 0.02, lowZ]], 'soffit', { n: [0, 0, lowZ === p.z[0] ? -1 : 1], dens: 1.5 });
+    const lowZ = p.z[0], lowH = p.h[0];
+    b.poly([[p.x[0], lowH - 0.55, lowZ], [p.x[1], lowH - 0.55, lowZ], [p.x[1], lowH + 0.02, lowZ], [p.x[0], lowH + 0.02, lowZ]], 'soffit', { n: [0, 0, -1], dens: 1.5 });
+    b.mbox(p.x[0] - 0.4, p.x[1] + 0.4, lowH - 0.45, lowH - 0.05, lowZ - 0.41, lowZ - 0.01, 'vinyl');
     for (const [x, s] of [[p.x[0], -1], [p.x[1], 1]]) {
       b.poly([[x, planeH(p, p.z[0]) - 0.45, p.z[0]], [x, planeH(p, p.z[1]) - 0.45, p.z[1]], [x, planeH(p, p.z[1]) + 0.02, p.z[1]], [x, planeH(p, p.z[0]) + 0.02, p.z[0]]], 'soffit', { n: [s, 0, 0], dens: 1.5 });
     }
   }
-  // siding between the wall tops and the roof (eave friezes and the gable triangles)
+  // ---- walls between the wall tops and the roof (short friezes under the eaves): shakes, stone on the bay
   for (const w of L.WALLS) {
     if (!w.ext) continue;
     const { alongX, t, c, a0, a1 } = wallInfo(w);
@@ -1740,7 +2659,6 @@ function exterior(b) {
     const sides = [-1, 1].filter(s => !inside(s));
     const stops = new Set([a0 - t / 2, a1 + t / 2]);
     for (let a = Math.ceil(a0); a < a1; a++) stops.add(a);
-    if (!alongX) stops.add(13.95);
     const xs = [...stops].filter(a => a >= a0 - t / 2 && a <= a1 + t / 2).sort((m, n) => m - n);
     for (const side of sides) {
       const off = side * t / 2;
@@ -1749,18 +2667,190 @@ function exterior(b) {
         const ha = roofUnder(pa[0], pa[2]), hb = roofUnder(pb[0], pb[2]);
         const ta = wallTop(w, xs[i]), tb = wallTop(w, xs[i + 1]);
         if (!(ha > ta + 0.01) || !(hb > tb + 0.01)) continue;
-        b.poly([wp(alongX, c, xs[i], off, ta), wp(alongX, c, xs[i + 1], off, tb), wp(alongX, c, xs[i + 1], off, hb), wp(alongX, c, xs[i], off, ha)], 'siding', { n: wn(alongX, side), dens: 1.2 });
+        const mat = extFinish((pa[0] + pb[0]) / 2, (pa[2] + pb[2]) / 2, (ta + ha) / 2, wn(alongX, side));
+        b.poly([wp(alongX, c, xs[i], off, ta), wp(alongX, c, xs[i + 1], off, tb), wp(alongX, c, xs[i + 1], off, hb), wp(alongX, c, xs[i], off, ha)], mat, { n: wn(alongX, side), dens: 1.2 });
       }
     }
   }
-  b.poly([[20.8, L.MAIN_CEIL, 30], [28.8, L.MAIN_CEIL, 30], [28.8, L.MAIN_CEIL, 35], [20.8, L.MAIN_CEIL, 35]], 'soffit', { n: [0, -1, 0], dens: 2 });
-  // ground, driveway, walks, street
-  b.poly([[-140, -0.03, -140], [190, -0.03, -140], [190, -0.03, 190], [-140, -0.03, 190]], 'grass', { n: [0, 1, 0], dens: 0.12 });
-  b.poly([[0.2, -0.01, L.GARAGE_Z], [20.6, -0.01, L.GARAGE_Z], [20.6, -0.01, 75], [0.2, -0.01, 75]], 'concrete', { n: [0, 1, 0], dens: 0.6 });
-  const walk0 = L.FLIGHTS.find(f => f.id === 'frontStoop').r[3];
-  b.poly([[22.6, -0.01, walk0], [27, -0.01, walk0], [27, -0.01, 75], [22.6, -0.01, 75]], 'stone', { n: [0, 1, 0], dens: 0.8 });
-  b.poly([[35.9, -0.01, -30], [39.1, -0.01, -30], [39.1, -0.01, -13.2], [35.9, -0.01, -13.2]], 'stone', { n: [0, 1, 0], dens: 0.8 });
-  b.poly([[-140, -0.005, 75], [190, -0.005, 75], [190, -0.005, 100], [-140, -0.005, 100]], 'asphalt', { n: [0, 1, 0], dens: 0.1 });
+  // entry recess: one flat white ceiling flush with the bottom of the roof (the eave's fascia bottom), from the door
+  // wall out to the front fascia; the stone sides run up to it, with no header hanging down from the roof
+  const PORCH = EAVE - 0.55;
+  b.poly([[WX, PORCH, 30.25], [29.05, PORCH, 30.25], [29.05, PORCH, WZ], [WX, PORCH, WZ]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  // close the ceiling's open edges up to the raked soffit above: west in front of the bedroom wall's end, east in
+  // front of the living-room block
+  for (const [x, za, zb, s] of [[WX, 30.25, RZ1, -1], [29.05, L.UP_LIV_Z + L.EXT_T / 2, WZ, 1]]) {
+    for (let z = za; z < zb - 1e-6; z += 0.5) {
+      const z2 = Math.min(zb, z + 0.5), ha = roofUnder(x + s * 0.02, z), hb = roofUnder(x + s * 0.02, z2);
+      if (ha > PORCH + 0.01 || hb > PORCH + 0.01) b.poly([[x, PORCH, z], [x, PORCH, z2], [x, Math.max(PORCH, hb), z2], [x, Math.max(PORCH, ha), z]], 'soffit', { n: [-s, 0, 0], dens: 2 });
+    }
+  }
+  // stone pier face at the living-room corner, soffit to header (covers the siding/stone corner under the overhang)
+  b.box(28.55, 29.05, L.SOFFIT_Y, PORCH, L.UP_LIV_Z + 0.25, L.UP_LIV_Z + 0.3, 'ledgestone', { skip: ['nz'], dens: 2 });
+  // white corner boards on the outside corners of the shakes; the upper front corners start at the overhang soffit
+  // (SE: a brown board closing the end of the living-room overhang, only its edge showing on the front)
+  const SY = L.SOFFIT_Y, LZ = L.UP_LIV_Z + L.EXT_T / 2;
+  for (const [x, z, sx, sz, y0x, y0z, wf = 0.38, mat = 'vinyl'] of [[-0.25, -0.25, -1, -1, 0, 0], [-0.25, UZ, -1, 1, SY, SY],
+    [45.25, LZ, 1, 1, SY, SY, 0.08, 'trimBrown'], [34.75, -8.25, -1, -1, 0, 0], [45.25, -8.25, 1, -1, 0, 0]]) {
+    const y1 = roofUnder(x + sx * 0.05, z + sz * 0.05);
+    b.mbox(Math.min(x, x + sx * 0.07), Math.max(x, x + sx * 0.07), y0x, y1, Math.min(z, z - sz * 0.38), Math.max(z, z - sz * 0.38), mat);
+    b.mbox(Math.min(x - sx * wf, x + sx * 0.07), Math.max(x - sx * wf, x + sx * 0.07), y0z, y1, Math.min(z, z + sz * 0.07), Math.max(z, z + sz * 0.07), mat);
+  }
+  b.mbox(-0.32, -0.25, 0, SY, 27.77, 28.15, 'vinyl');   // lower SW garage corner: west leg only (west shakes meet the front stone)
+  b.mbox(45.25, 45.32, 0, SY, 34.87, 35.25, 'vinyl');   // lower SE playroom corner: east leg only (east shakes meet the front stone)
+  b.mbox(29.05, 29.13, SY, roofUnder(29.1, LZ + 0.05), LZ - 0.3, LZ + 0.02, 'trimBrown');   // living-room block's SW corner, beside the recess stone
+  // ---- overhangs: flat white soffit under the cantilevered upper storey, a vinyl starter strip at the foot of the shakes
+  b.poly([[-0.25, SY, 28.15], [20.6, SY, 28.15], [20.6, SY, UZ], [-0.25, SY, UZ]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.poly([[28.55, SY, 35.25], [45.25, SY, 35.25], [45.25, SY, LZ], [28.55, SY, LZ]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.box(-0.25, 20.6, SY, SY + 0.08, UZ, UZ + 0.03, 'vinyl', { skip: ['nz'], dens: 6 });
+  b.box(29.13, 45.17, SY, SY + 0.08, LZ, LZ + 0.03, 'vinyl', { skip: ['nz'], dens: 6 });   // one strip: the bow's underside is higher (BOW.base)
+  // continuous stone sill under the three playroom windows (top meets their flat trim; wall outer face z 35.25)
+  b.box(31.04, 42.31, L.LOW + 3.69, L.LOW + 3.94, 35.23, 35.43, 'stoneCap', { skip: ['nz'], dens: 3, bevel: 0.02 });
+  stoopRails(b);
+  planter(b);
+  // ---- ground: lawn; asphalt drive with a grey paver soldier course, scored concrete sidewalk and a lawn
+  // strip to the curb, the street; a small patio out back
+  const G = (x0, x1, z0, z1, y, mat, o = {}) => b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], mat, { n: [0, 1, 0], ...o });
+  const DX0 = 0.2, DX1 = 20.6, PV = 0.67, SW0 = 65, SW1 = 69.5, CURB = 74.5, STREET = 75;
+  G(-140, 190, -140, 190, -0.03, 'grass', { dens: 0.12 });
+  G(DX0 + PV, DX1 - PV, L.GARAGE_Z + 0.25, SW0 - PV, -0.01, 'asphalt', { dens: 0.5 });
+  const band = (x0, x1, z0, z1, alongX) => {
+    const pts = [[x0, -0.01, z0], [x1, -0.01, z0], [x1, -0.01, z1], [x0, -0.01, z1]];
+    polyUV(b, pts, pts.map(([x, , z]) => (alongX ? [x, z - z0] : [z, x - x0])), 'pavers', [0, 1, 0], { dens: 1 });
+  };
+  band(DX0, DX0 + PV, L.GARAGE_Z + 0.25, SW0, false); band(DX1 - PV, DX1, L.GARAGE_Z + 0.25, SW0, false); band(DX0 + PV, DX1 - PV, SW0 - PV, SW0, true);
+  G(-140, 190, SW0, SW1, -0.01, 'sidewalk', { dens: 0.3 });
+  G(DX0, DX1, SW1, STREET, -0.01, 'asphalt', { dens: 0.5 });                                  // apron across the lawn strip
+  G(-140, DX0, CURB, STREET, -0.01, 'concrete', { dens: 0.2 }); G(DX1, 190, CURB, STREET, -0.01, 'concrete', { dens: 0.2 });
+  G(-140, 190, STREET, 100, -0.005, 'asphalt', { dens: 0.1 });
+  G(24, 41, -20, -13.2, -0.01, 'concrete', { dens: 0.5 });
+  // white vinyl privacy fence, 6' high, along the back and side lot lines
+  fence(b, [[-12, 4], [-12, -34], [54, -34], [54, 20]]);
+}
+// White vinyl railings on both sides of the front stoop: a level run along each side of the top landing (from the
+// door wall / playroom wall to a corner post at the top of the stair), then a sloped run over a mid post down to a
+// post on the lower landing. Nothing across the landing front, the lower landing or the bottom steps.
+function stoopRails(b) {
+  const f = L.FLIGHTS.find(q => q.id === 'frontStoop'), [, , z0, z1] = f.r;
+  const rise = (f.h0 - f.h1) / f.risers, d = (z1 - z0) / f.risers;
+  const nose = z => f.h1 + rise * (1 + (z1 + 0.09 - z) / d);    // nosing line (h1 added: the flight ends at 1.875)
+  const level = () => L.FRONT, V = 'vinyl', PH = 0.21;
+  const post = (x, z, top, cap = true) => {
+    b.mbox(x - PH, x + PH, 0, top, z - PH, z + PH, V);
+    if (cap) b.mbox(x - 0.26, x + 0.26, top, top + 0.1, z - 0.26, z + 0.26, V);
+  };
+  const run = (x, za, zb, base, skip = []) => {                  // rails between post faces za < zb
+    beam(b, [x, base(za) + 2.8, za], [x, base(zb) + 2.8, zb], 0.2, 0.22, V);
+    beam(b, [x, base(za) + 0.4, za], [x, base(zb) + 0.4, zb], 0.14, 0.14, V);
+    const n = Math.round((zb - za) / 0.43);
+    for (let i = 1; i < n; i++) {
+      const z = za + (zb - za) * i / n;
+      if (skip.some(p => Math.abs(z - p) < PH + 0.1)) continue;   // the rails pass through the mid post
+      b.mbox(x - 0.055, x + 0.055, base(z) + 0.47, base(z) + 2.69, z - 0.055, z + 0.055, V);
+    }
+  };
+  const ZC = 36.3, ZM = 40.05, ZB = 43.8;                          // corner, mid, bottom posts
+  // north posts: W against the door wall; E against the playroom stone, tucked up under the living-room soffit (no cap)
+  for (const [x, zN, zS, topN, capN] of [[20.82, 30.5, 30.25, L.FRONT + 3.05, true], [28.83, L.PWF + 0.25, L.PWF, L.SOFFIT_Y - 0.01, false]]) {
+    post(x, zN, topN, capN);
+    post(x, ZC, nose(ZC) + 3.05);                                  // ≈ 10.11
+    post(x, ZM, nose(ZM) + 3.05);                                  // ≈ 7.76
+    post(x, ZB, nose(ZB) + 3.05);                                  // ≈ 5.42 (3.55 above the lower landing)
+    run(x, zN + PH, ZC - PH, level);                               // W1 30.71→36.09 / E1 35.71→36.09 (no balusters)
+    run(x, ZC + PH, ZB - PH, nose, [ZM]);                          // W2 / E2 36.51→43.59
+    b.collider(x - PH, x + PH, 0, 10, zS, ZB + PH);                // west: 6.9 ft drop off the landing edge
+  }
+}
+// Garden wall: one continuous ledgestone wall with a stone cap, from the upper bottom step's riser round a front
+// lobe (to under the third playroom window), in past a waist and out along a rear lobe to the playroom's SE corner;
+// a bed of tall ornamental grasses.
+function planter(b) {
+  const PWF = L.PWF, T = 0.6, H = 1.18, CT = 0.12, CH = 0.38, SOIL = 1.05, N = 60;
+  const curve = new THREE.CatmullRomCurve3([
+    [18.8, 52.35], [19.6, 53.2], [21.5, 53.45], [26.0, 53.45], [29.6, 53.3], [31.3, 52.5], [32.0, 50.6], [32.2, 47.0],
+    [32.7, 44.3], [34.2, 42.4], [36.5, 41.4], [40.0, 40.6], [43.2, 40.0], [44.7, 39.2], [44.95, 37.8], [44.95, 36.2], [44.95, PWF],
+  ].map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+  const I = [], O = [], CI = [], CO = [];
+  for (let i = 0; i <= N; i++) {
+    const p = curve.getPointAt(i / N), t = curve.getTangentAt(i / N), l = Math.hypot(t.x, t.z);
+    const nx = t.z / l, nz = -t.x / l;                             // toward the bed
+    I.push([p.x + nx * T / 2, p.z + nz * T / 2]); O.push([p.x - nx * T / 2, p.z - nz * T / 2]);
+    CI.push([p.x + nx * CH, p.z + nz * CH]); CO.push([p.x - nx * CH, p.z - nz * CH]);
+  }
+  I[N][1] = Math.max(I[N][1], PWF);
+  for (let i = 0; i < N; i++) {
+    const [a, c] = [O[i], O[i + 1]], [e, g] = [I[i], I[i + 1]];
+    b.poly([[a[0], 0, a[1]], [c[0], 0, c[1]], [c[0], H, c[1]], [a[0], H, a[1]]], 'ledgestone', { n: [a[1] - c[1], 0, c[0] - a[0]], dens: 2 });
+    b.poly([[e[0], 0, e[1]], [g[0], 0, g[1]], [g[0], H, g[1]], [e[0], H, e[1]]], 'ledgestone', { n: [g[1] - e[1], 0, e[0] - g[0]], dens: 2 });
+    const xs = [a[0], c[0], e[0], g[0]], zs = [a[1], c[1], e[1], g[1]];
+    b.collider(Math.min(...xs), Math.max(...xs), 0, H + CT, Math.min(...zs), Math.max(...zs));
+    // cap: 0.76 wide (0.08 over each face), 0.12 thick, top at 1.30
+    b.poly([CO[i], CO[i + 1], CI[i + 1], CI[i]].map(([x, z]) => [x, H + CT, z]), 'stoneCap', { n: [0, 1, 0], dens: 3 });
+    for (const [E, sg] of [[CO, -1], [CI, 1]]) {
+      const [e0, e1] = [E[i], E[i + 1]];
+      b.poly([[e0[0], H, e0[1]], [e1[0], H, e1[1]], [e1[0], H + CT, e1[1]], [e0[0], H + CT, e0[1]]], 'stoneCap', { n: [sg * (e1[1] - e0[1]), 0, sg * (e0[0] - e1[0])], dens: 3 });
+    }
+  }
+  // the west end, beside the bottom step: stone end face and the cap's end
+  const t0 = curve.getTangentAt(0), en = [-t0.x, 0, -t0.z];
+  b.poly([[O[0][0], 0, O[0][1]], [I[0][0], 0, I[0][1]], [I[0][0], H, I[0][1]], [O[0][0], H, O[0][1]]], 'ledgestone', { n: en, dens: 2 });
+  b.poly([[CO[0][0], H, CO[0][1]], [CI[0][0], H, CI[0][1]], [CI[0][0], H + CT, CI[0][1]], [CO[0][0], H + CT, CO[0][1]]], 'stoneCap', { n: en, dens: 3 });
+  // bed: the wall's inside edge, west along the playroom face, south down the stoop's east face, west along the
+  // square landing's (and the steps') south edge back to the wall's start: it wraps the landing on two sides
+  const loop = [...I, [29.05, PWF], [29.05, 51.95], [18.2, 51.95]];
+  const tris = THREE.ShapeUtils.triangulateShape(loop.map(([x, z]) => new THREE.Vector2(x, z)), []);
+  for (const t of tris) b.poly(t.map(k => [loop[k][0], SOIL, loop[k][1]]), 'mulch', { n: [0, 1, 0], dens: 1 });
+  // tall ornamental grasses: fountains of thin blades
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const tuft = (x, y, z, r, h) => {
+    const pos = [];
+    for (let k = 0; k < 26; k++) {
+      const a = rnd() * Math.PI * 2, lean = 0.35 + rnd() * 0.65, bh = h * (0.6 + rnd() * 0.4), w = 0.06;
+      const bx = x + Math.cos(a) * r * 0.25 * rnd(), bz = z + Math.sin(a) * r * 0.25 * rnd();
+      const tx = bx + Math.cos(a) * r * lean, tz = bz + Math.sin(a) * r * lean, px = -Math.sin(a) * w, pz = Math.cos(a) * w;
+      const A = [bx - px, y, bz - pz], B = [bx + px, y, bz + pz], Tp = [tx, y + bh, tz];
+      pos.push(...A, ...B, ...Tp, ...B, ...A, ...Tp);                 // both windings
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+    b.mesh(g, ['paint:#6f8a3e', 'paint:#7d9447', 'paint:#8c9a55'][Math.floor(rnd() * 3)]);
+  };
+  for (const [x, z, r, h] of [
+    [20.2, 52.55, 0.5, 2.0], [22.0, 52.65, 0.55, 2.4], [24.0, 52.6, 0.55, 2.6], [26.0, 52.65, 0.55, 2.4], [28.0, 52.6, 0.55, 2.6],
+    [29.9, 52.3, 0.55, 2.4],                                                                      // along the landing's south side
+    [30.3, 50.4, 0.6, 2.6], [30.5, 48.2, 0.7, 2.8], [30.6, 46.1, 0.7, 2.6], [30.8, 43.9, 0.7, 2.8], [30.4, 41.7, 0.8, 3.0],
+    [30.1, 39.5, 0.8, 2.6], [30.2, 37.3, 0.7, 2.4], [31.4, 36.4, 0.6, 2.0],                         // along its east side and the stoop
+    [32.6, 39.9, 0.7, 2.4], [33.3, 37.3, 0.7, 2.2], [34.9, 39.6, 0.7, 2.4], [35.7, 37.0, 0.7, 2.0], [37.3, 38.9, 0.7, 2.2],
+    [38.6, 36.8, 0.7, 2.0], [39.9, 38.7, 0.7, 2.2], [41.3, 36.8, 0.7, 1.8], [42.6, 38.4, 0.6, 2.0], [43.9, 36.9, 0.6, 1.6],   // playroom front
+  ]) tuft(x, SOIL, z, r, h);
+  for (const [x, z, r] of [[31.1, 51.4, 0.45], [36.5, 38.3, 0.4], [33.9, 36.4, 0.4]]) {   // a few low perennials
+    const g = new THREE.IcosahedronGeometry(r, 1), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const k = 0.85 + rnd() * 0.3; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.7, p.getZ(i) * k); }
+    g.computeVertexNormals();
+    b.prim(g, 'paint:#5f7d3c', x, SOIL + r * 0.4, z, rnd() * 3);
+  }
+  // black square planters down the east side of the stoop treads (positions estimated from the photos)
+  for (const [z, y] of [[40.0, 4.375], [41.0, 3.75], [43.0, 2.5], [44.2, 1.875]]) {
+    b.box(26.5, 28.1, y, y + 0.7, z - 0.45, z + 0.45, 'paint:#1e1e1e', { skip: ['ny'], dens: 3 });
+    b.collider(26.5, 28.1, y, y + 1.6, z - 0.45, z + 0.45);   // tall enough to reach BODY_LO (1.0) above the tread
+  }
+}
+// White vinyl privacy fence along a polyline: posts every 8', solid 6' panels between with a top rail.
+function fence(b, pts) {
+  const V = 'vinyl';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1], len = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(len / 8);
+    for (let k = 0; k <= n; k++) {
+      const x = x0 + (x1 - x0) * k / n, z = z0 + (z1 - z0) * k / n;
+      if (k > 0 || i === 0) { b.mbox(x - 0.21, x + 0.21, 0, 6.3, z - 0.21, z + 0.21, V); b.mbox(x - 0.26, x + 0.26, 6.3, 6.4, z - 0.26, z + 0.26, V); }
+      if (k === n) continue;
+      const xa = x + (x1 - x0) / n, za = z + (z1 - z0) / n, alongX = z0 === z1;
+      const [ax0, ax1] = [Math.min(x, xa), Math.max(x, xa)], [az0, az1] = [Math.min(z, za), Math.max(z, za)];
+      if (alongX) { b.mbox(ax0 + 0.21, ax1 - 0.21, 0.15, 5.85, z - 0.06, z + 0.06, V); b.mbox(ax0 + 0.21, ax1 - 0.21, 5.85, 6.1, z - 0.1, z + 0.1, V); }
+      else { b.mbox(x - 0.06, x + 0.06, 0.15, 5.85, az0 + 0.21, az1 - 0.21, V); b.mbox(x - 0.1, x + 0.1, 5.85, 6.1, az0 + 0.21, az1 - 0.21, V); }
+    }
+    b.collider(Math.min(x0, x1) - 0.2, Math.max(x0, x1) + 0.2, 0, 6.3, Math.min(z0, z1) - 0.2, Math.max(z0, z1) + 0.2);
+  }
 }
 
 // ================================================================== doors ===
@@ -1780,6 +2870,15 @@ function buildDoor(s) {
     }
   }
   lb.mesh(g, s.style === 'front' ? 'frontDoor' : 'doorWhite');
+  if (s.style === 'front') {
+    // outside face: dark mahogany stiles and rails, a moulding round the decorative glass and two raised
+    // panels below it (the photo texture is the inside, where the slab is in shadow)
+    const M = 'stain:#4e2016', z0 = T / 2, gx0 = 0.02 + 0.204 * w, gx1 = 0.02 + 0.79 * w, gy0 = 0.02 + 0.311 * H, gy1 = 0.02 + 0.905 * H;
+    for (const [a, c, e, f] of [[0.02, gx0, 0.02, H + 0.02], [gx1, w + 0.02, 0.02, H + 0.02], [gx0, gx1, gy1, H + 0.02], [gx0, gx1, 0.02, gy0]]) lb.mbox(a, c, e, f, z0, z0 + 0.008, M);
+    for (const [a, c, e, f] of [[gx0 - 0.06, gx0, gy0 - 0.06, gy1 + 0.06], [gx1, gx1 + 0.06, gy0 - 0.06, gy1 + 0.06], [gx0, gx1, gy1, gy1 + 0.06], [gx0, gx1, gy0 - 0.06, gy0]]) lb.mbox(a, c, e, f, z0 + 0.008, z0 + 0.03, M);
+    const pm = (gx0 + gx1) / 2;
+    for (const [a, c] of [[gx0 + 0.05, pm - 0.08], [pm + 0.08, gx1 - 0.05]]) lb.mbox(a, c, 0.02 + 0.09 * H, 0.02 + 0.25 * H, z0 + 0.008, z0 + 0.025, M);
+  }
   if (s.style === 'panel' && w > (sl ? 1.0 : 1.2)) {
     const P = sl ? 0.025 : 0.035;
     for (const side of [-1, 1]) {
@@ -1814,14 +2913,24 @@ function doorKnob(lb, mat, x, y, z0, side) {
   // turned knob: short neck, then a flattened ball with a broad face
   const V = (r, h) => new THREE.Vector2(r, h);
   const lathe = new THREE.LatheGeometry([V(0.001, 0), V(0.04, 0), V(0.035, 0.07), V(0.05, 0.1), V(0.1, 0.13), V(0.115, 0.17), V(0.105, 0.21), V(0.07, 0.225), V(0.001, 0.228)], 32);
-  lathe.scale(1, 1, 0.74);                             // oval: squashed top to bottom once turned onto the door
+  lathe.scale(0.74, 1, 1);                             // oval: narrower side to side, so it stands taller than wide on the door
   lb.prim(lathe, mat, x, y, z0 + side * 0.02, 0, { rx: side * Math.PI / 2 });
 }
 function buildGarageDoor(s) {
-  const w = s.x1 - s.x0, lb = new Builder();
+  // white raised-panel sectional door: four sections with four raised panels across each, joints between
+  const w = s.x1 - s.x0, lb = new Builder(), T = 0.075, sh = s.h / 4;
   const g = new THREE.BoxGeometry(w, s.h, 0.15, 8, 8, 1);
   g.translate(w / 2, s.h / 2, 0);
   lb.mesh(g, 'garageDoor');
-  for (let i = 1; i < 4; i++) lb.mbox(0, w, i * s.h / 4 - 0.03, i * s.h / 4 + 0.03, -0.1, 0.1, 'garageDoor');
+  const n = 4, mx = 0.3, gap = 0.3, pw = (w - 2 * mx - (n - 1) * gap) / n;
+  for (let r = 0; r < 4; r++) {
+    const y0 = r * sh + 0.32, y1 = (r + 1) * sh - 0.32;
+    for (let k = 0; k < n; k++) {
+      const x0 = mx + k * (pw + gap);
+      lb.mbox(x0, x0 + pw, y0, y1, T, T + 0.02, 'paint:#dcdad3');                        // bevelled border, in shade
+      lb.mbox(x0 + 0.1, x0 + pw - 0.1, y0 + 0.1, y1 - 0.1, T + 0.02, T + 0.04, 'garageDoor');
+    }
+    if (r) for (const z of [T, -T - 0.006]) lb.mbox(0, w, r * sh - 0.015, r * sh + 0.015, z, z + 0.006, 'paint:#bdbbb4');
+  }
   return { spec: s, parts: lb.parts, w };
 }

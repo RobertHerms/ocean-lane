@@ -23,6 +23,23 @@ const EYE = 5.35, R = 0.75, STEP = 1.05;
 const WALK = 5.0, TURN = 1.8, LOOK = 1.25;
 const DRAG_LOOK = 0.0042, TOUCH_LOOK = 0.0075;   // radians per pixel dragged (mouse / finger)
 const BODY_LO = 1.0, BODY_HI = 5.9;
+const CROUCH_EYE = 3.1, CROUCH_HI = 3.6, JUMP_V = 9.5;   // crouched eye height / body top; jump take-off speed (ft/s)
+let bodyHi = BODY_HI;
+
+// -------------------------------------------------------------- options ----
+// Remembered per browser. Time of day scales and tints the baked daylight layer and adds the house lights
+// on top; the sky dome, frosted glass and the exposure target follow.
+const OPT_KEY = 'oceanLane.options';
+const DEFAULTS = { speed: 1, tod: 'day', brightness: 0, lights: 1, bloom: 0.05, fov: 68 };
+const opts = { ...DEFAULTS };
+try { Object.assign(opts, JSON.parse(localStorage.getItem(OPT_KEY) || '{}')); } catch (e) { /* storage unavailable */ }
+const saveOpts = () => { try { localStorage.setItem(OPT_KEY, JSON.stringify(opts)); } catch (e) { /* ignore */ } };
+const TOD = {
+  day: { day: [1, 1, 1], key: 1.0, zen: [0.9, 1.45, 3.1], hor: [2.9, 3.35, 4.0], sun: 1, frost: 1 },
+  dusk: { day: [0.3, 0.19, 0.12], key: 0.75, zen: [0.22, 0.2, 0.42], hor: [1.5, 0.75, 0.42], sun: 0.15, frost: 0.3 },
+  night: { day: [0.008, 0.011, 0.022], key: 0.5, zen: [0.004, 0.006, 0.016], hor: [0.012, 0.014, 0.024], sun: 0, frost: 0.03 },
+};
+const tod = () => TOD[opts.tod] || TOD.day;
 
 const loadingEl = document.getElementById('loading');
 const setLoading = t => { loadingEl.textContent = t; };
@@ -38,7 +55,7 @@ renderer.toneMappingExposure = 1;
 setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.08, 800);
+const camera = new THREE.PerspectiveCamera(opts.fov, window.innerWidth / window.innerHeight, 0.08, 800);
 camera.rotation.order = 'YXZ';
 
 // HDR pipeline: 4x MSAA scene render → soft bloom on windows and lamps → tone map + sRGB
@@ -55,11 +72,11 @@ const SKY = { zenith: [0.9, 1.45, 3.1], horizon: [2.9, 3.35, 4.0] };
 const sunDir = new THREE.Vector3(...L.SUN_DIR).normalize();
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
-  uniforms: { zen: { value: new THREE.Vector3(...SKY.zenith) }, hor: { value: new THREE.Vector3(...SKY.horizon) }, sun: { value: sunDir } },
+  uniforms: { zen: { value: new THREE.Vector3(...SKY.zenith) }, hor: { value: new THREE.Vector3(...SKY.horizon) }, sun: { value: sunDir }, sunK: { value: 1 } },
   vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }',
-  fragmentShader: `varying vec3 vD; uniform vec3 zen, hor, sun;
+  fragmentShader: `varying vec3 vD; uniform vec3 zen, hor, sun; uniform float sunK;
     void main(){ vec3 d = normalize(vD); vec3 c = d.y < 0.0 ? hor * 0.35 : mix(hor, zen, pow(d.y, 0.55));
-      float s = max(dot(d, sun), 0.0); c += vec3(1.0, 0.95, 0.85) * (pow(s, 1200.0) * 400.0 + pow(s, 12.0) * 1.5);
+      float s = max(dot(d, sun), 0.0); c += vec3(1.0, 0.95 - 0.35 * (1.0 - sunK), 0.85 - 0.6 * (1.0 - sunK)) * sunK * (pow(s, 1200.0) * 400.0 + pow(s, 12.0) * 1.5);
       gl_FragColor = vec4(c, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -87,20 +104,37 @@ async function loadBake() {
       return null;
     }
     setLoading('Loading baked lighting…');
-    const lm = await new HDRLoader().loadAsync(`baked/lightmap.hdr?v=${v}`);
-    lm.flipY = false;
+    const tex = t => { t.flipY = false; t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true; return t; };
+    const bin = async n => new Float32Array(await (await fetch(`baked/${n}?v=${v}`)).arrayBuffer());
+    if (meta.layers) {
+      // two layers (daylight, house lights); the lightmap the materials use is their mix, redrawn whenever
+      // the lighting options change
+      const [lmDay, lmLamp, prDay, prLamp] = await Promise.all([
+        new HDRLoader().loadAsync(`baked/lightmap_day.hdr?v=${v}`), new HDRLoader().loadAsync(`baked/lightmap_lamps.hdr?v=${v}`),
+        bin('probes_day.bin'), bin('probes_lamps.bin')]);
+      const rt = new THREE.WebGLRenderTarget(meta.W, meta.H, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, generateMipmaps: false });
+      rt.texture.channel = 1;
+      return { meta, lm: rt.texture, rt, lmDay: tex(lmDay), lmLamp: tex(lmLamp), prDay, prLamp, probes: new Float32Array(prDay.length) };
+    }
+    const lm = tex(await new HDRLoader().loadAsync(`baked/lightmap.hdr?v=${v}`));
     lm.channel = 1;
-    lm.minFilter = THREE.LinearFilter; lm.magFilter = THREE.LinearFilter; lm.generateMipmaps = false;
-    lm.needsUpdate = true;
-    const probes = new Float32Array(await (await fetch(`baked/probes.bin?v=${v}`)).arrayBuffer());
-    return { meta, lm, probes };
+    return { meta, lm, probes: await bin('probes.bin') };
   } catch (e) {
     console.warn('No baked lighting found', e);
     return null;
   }
 }
 
-const bake = await loadBake();
+const bake = new URLSearchParams(location.search).has('nobake') ? null : await loadBake();
+// the light mix for the current options: daylight tint and house-light level
+const mixK = () => ({ dk: tod().day, lk: opts.lights });
+function mixProbes() {
+  if (!bake?.prDay) return;
+  const { dk, lk } = mixK(), a = bake.prDay, b = bake.prLamp, o = bake.probes;
+  for (let i = 0; i < o.length; i += 3) for (let c = 0; c < 3; c++) o[i + c] = a[i + c] * dk[c] + b[i + c] * lk;
+}
+mixProbes();
+const irrTargets = [];   // per-vertex irradiance attributes and the probe each vertex reads (re-mixed on change)
 if (!bake) {
   // fallback so the layout can still be inspected before a bake exists
   scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 2.5));
@@ -113,7 +147,7 @@ const roomKey = (x, z, y) => { const r = roomAt(x, z, y); return r ? r.id : 'ext
 const groups = new Map();
 function group(matKey, variant, room) {
   const k = `${matKey}|${variant}|${room}`;
-  if (!groups.has(k)) groups.set(k, { matKey, variant, room, pos: [], nrm: [], uv: [], uv1: [], irr: [] });
+  if (!groups.has(k)) groups.set(k, { matKey, variant, room, pos: [], nrm: [], uv: [], uv1: [], irr: [], pidx: [] });
   return groups.get(k);
 }
 const probeIrr = i => (bake ? [bake.probes[i * 3], bake.probes[i * 3 + 1], bake.probes[i * 3 + 2]] : [0.3, 0.3, 0.3]);
@@ -139,6 +173,7 @@ for (const p of parts) {
       g.nrm.push(p.nrm[i * 3], p.nrm[i * 3 + 1], p.nrm[i * 3 + 2]);
       g.uv.push(p.uv[i * 2], p.uv[i * 2 + 1]);
       g.irr.push(...probeIrr(p.probeBase + i));
+      g.pidx.push(p.probeBase + i);
     }
   }
 }
@@ -151,7 +186,10 @@ for (const g of groups.values()) {
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.nrm, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
   if (g.variant === 'lm') geo.setAttribute('uv1', new THREE.Float32BufferAttribute(g.uv1, 2));
-  if (g.variant === 'vx') geo.setAttribute('irr', new THREE.Float32BufferAttribute(g.irr, 3));
+  if (g.variant === 'vx') {
+    geo.setAttribute('irr', new THREE.Float32BufferAttribute(g.irr, 3));
+    irrTargets.push({ attr: geo.attributes.irr, pidx: Int32Array.from(g.pidx) });
+  }
   let mat;
   if (g.variant === 'basic') {
     const src = makeMaterial(g.matKey, 'flat');
@@ -169,15 +207,17 @@ for (const g of groups.values()) {
 
 // glass & mirrors
 const glassMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, metalness: 0, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
-{
+// obscure (frosted) glass glows with the daylight coming through it: unlit, translucent white
+const frostMat = new THREE.MeshBasicMaterial({ color: '#e4e9ea', transparent: true, opacity: 0.88, depthWrite: false, side: THREE.DoubleSide });
+for (const [mat, list] of [[glassMat, house.glass.filter(gl => !gl.frosted)], [frostMat, house.glass.filter(gl => gl.frosted)]]) {
   const pos = [], nrm = [];
-  for (const gl of house.glass) {
+  for (const gl of list) {
     for (let i = 1; i < gl.pts.length - 1; i++) for (const k of [0, i, i + 1]) { pos.push(...gl.pts[k]); nrm.push(...gl.n); }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
-  const glass = new THREE.Mesh(geo, glassMat);
+  const glass = new THREE.Mesh(geo, mat);
   glass.renderOrder = 2;
   scene.add(glass);
 }
@@ -203,7 +243,7 @@ function buildDynamic(obj, room) {
   }
   const grp = new THREE.Group();
   for (const [key, list] of byMat) {
-    const pos = [], nrm = [], uv = [], irr = [];
+    const pos = [], nrm = [], uv = [], irr = [], pidx = [];
     for (const p of list) {
       const n = p.pos.length / 3;
       for (let i = 0; i < n; i++) {
@@ -211,6 +251,7 @@ function buildDynamic(obj, room) {
         nrm.push(p.nrm[i * 3], p.nrm[i * 3 + 1], p.nrm[i * 3 + 2]);
         uv.push(p.uv[i * 2], p.uv[i * 2 + 1]);
         irr.push(...probeIrr(p.probeBase + i));
+        pidx.push(p.probeBase + i);
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -218,6 +259,7 @@ function buildDynamic(obj, room) {
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setAttribute('irr', new THREE.Float32BufferAttribute(irr, 3));
+    irrTargets.push({ attr: geo.attributes.irr, pidx: Int32Array.from(pidx) });
     const mat = makeMaterial(key, isGlow(key) ? 'flat' : 'vx');
     const mesh = new THREE.Mesh(geo, mat);
     grp.add(mesh);
@@ -339,12 +381,16 @@ const sliders = (house.sliders || []).map(s => new Slider(s));
 
 // ------------------------------------------------------ reflection probes ----
 const envs = new Map();
-if (bake) {
-  setLoading('Capturing reflections…');
+const envMats = [];   // materials that took a room's reflection capture (re-pointed after a re-capture)
+// the lamp shades glow with the house lights; frosted glass glows with the daylight
+const glowMats = [];
+scene.traverse(o => { const m = o.material; if (m?.userData?.key && isGlow(m.userData.key)) glowMats.push({ m, base: m.emissiveIntensity, day: m.userData.key === 'frosted' }); });
+function captureEnvs() {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const cubeRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType });
   const cubeCam = new THREE.CubeCamera(0.1, 400, cubeRT);
   for (const m of mirrors) m.visible = false;
+  const old = [...envs.values()];
   const capture = (id, x, y, z) => { cubeCam.position.set(x, y, z); cubeCam.update(renderer, scene); envs.set(id, pmrem.fromCubemap(cubeRT.texture).texture); };
   for (const r of L.ROOMS) {
     const big = r.rects.reduce((a, b) => ((b[1] - b[0]) * (b[3] - b[2]) > (a[1] - a[0]) * (a[3] - a[2]) ? b : a));
@@ -352,6 +398,48 @@ if (bake) {
     capture(r.id, (big[0] + big[1]) / 2, Math.min(y, r.h[1] - 0.5), (big[2] + big[3]) / 2);
   }
   capture('ext', 24.8, 5.5, 42);
+  for (const m of mirrors) m.visible = true;
+  cubeRT.dispose(); pmrem.dispose();
+  for (const { m, room } of envMats) m.envMap = envs.get(room) || envs.get('ext');
+  glassMat.envMap = envs.get('ext');
+  for (const t of old) t.dispose();
+}
+// -------------------------------------------------------- live lighting ----
+const mixScene = new THREE.Scene(), mixCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const mixMat = bake?.rt ? new THREE.ShaderMaterial({
+  glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false,
+  uniforms: { day: { value: bake.lmDay }, lamp: { value: bake.lmLamp }, dk: { value: new THREE.Vector3() }, lk: { value: 1 } },
+  vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: `precision highp float; uniform sampler2D day, lamp; uniform vec3 dk; uniform float lk; out vec4 o;
+    void main(){ ivec2 p = ivec2(gl_FragCoord.xy); o = vec4(texelFetch(day, p, 0).rgb * dk + texelFetch(lamp, p, 0).rgb * lk, 1.0); }`,
+}) : null;
+if (mixMat) { const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mixMat); q.frustumCulled = false; mixScene.add(q); }
+// Apply the lighting options. recapture: also redo the rooms' reflection captures (slower; on release).
+function applyLighting(recapture = false) {
+  const t = tod();
+  skyMat.uniforms.zen.value.set(...t.zen); skyMat.uniforms.hor.value.set(...t.hor); skyMat.uniforms.sunK.value = t.sun;
+  frostMat.color.set('#e4e9ea').multiplyScalar(t.frost);
+  for (const g of glowMats) g.m.emissiveIntensity = g.base * (g.day ? t.frost : opts.lights);
+  bloom.strength = opts.bloom;
+  if (camera.fov !== opts.fov) { camera.fov = opts.fov; camera.updateProjectionMatrix(); }
+  if (!mixMat) return;
+  const { dk, lk } = mixK();
+  mixMat.uniforms.dk.value.set(...dk); mixMat.uniforms.lk.value = lk;
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(bake.rt); renderer.render(mixScene, mixCam); renderer.setRenderTarget(prev);
+  mixProbes();
+  const pr = bake.probes;
+  for (const { attr, pidx } of irrTargets) {
+    const a = attr.array;
+    for (let j = 0; j < pidx.length; j++) { const s = pidx[j] * 3; a[j * 3] = pr[s]; a[j * 3 + 1] = pr[s + 1]; a[j * 3 + 2] = pr[s + 2]; }
+    attr.needsUpdate = true;
+  }
+  if (recapture) { captureEnvs(); if (kids) for (const k of kids.list) k.room = null; }
+}
+applyLighting();
+if (bake) {
+  setLoading('Capturing reflections…');
+  captureEnvs();
   for (const [room, mats] of roomMaterials) {
     const env = envs.get(room) || envs.get('ext');
     for (const m of mats) {
@@ -361,6 +449,7 @@ if (bake) {
       if (m.roughness >= 0.8) continue;
       m.envMap = env;
       m.envMapIntensity = 1;
+      envMats.push({ m, room });
       // specular only — diffuse light is already baked
       const prev = m.onBeforeCompile;
       m.onBeforeCompile = sh => {
@@ -373,8 +462,6 @@ if (bake) {
     }
   }
   glassMat.envMap = envs.get('ext');
-  for (const m of mirrors) m.visible = true;
-  cubeRT.dispose();
 }
 
 // --------------------------------------------------------------- player ----
@@ -401,7 +488,7 @@ function floorAt(x, z, feet) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function resolve(px, pz, feet) {
-  const b0 = feet + BODY_LO, b1 = feet + BODY_HI;
+  const b0 = feet + BODY_LO, b1 = feet + bodyHi;
   for (let it = 0; it < 3; it++) {
     for (const c of boxes) {
       if (c.y1 <= b0 || c.y0 >= b1) continue;
@@ -452,8 +539,12 @@ const helpEl = document.getElementById('help');
 const mapCanvas = document.getElementById('map');
 const CAPTURE = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown', 'Home', 'End'];
 window.addEventListener('keydown', e => {
+  if (optionsOpen) { if (e.key === 'Escape' || e.key === 'o' || e.key === 'O') showOptions(false); return; }
   if (CAPTURE.includes(e.key)) e.preventDefault();
   if (!started) { if (e.key === 'Enter' || e.key === ' ') begin(); return; }
+  if (e.key === 'o' || e.key === 'O') { showOptions(true); return; }
+  if (!e.repeat && (e.key === 'j' || e.key === 'J')) jump();
+  if (!e.repeat && (e.key === 'x' || e.key === 'X')) setCrouch(!crouch);
   if (e.repeat && e.key === ' ') return;
   if (e.key === ' ') { const t = findDoorTarget(); if (t) toggleDoor(t); }
   else if (e.key === 'm' || e.key === 'M') mapCanvas.classList.toggle('hidden');
@@ -651,6 +742,7 @@ function drawMap() {
 const meterRT = new THREE.WebGLRenderTarget(48, 27, { type: THREE.HalfFloatType });
 const meterBuf = new Uint16Array(48 * 27 * 4);
 const EXPOSURE_KEY = 0.15;                    // mid-grey the auto exposure aims for (lower = darker)
+const keyNow = () => EXPOSURE_KEY * Math.pow(2, opts.brightness) * tod().key;
 let exposure = 1, targetExposure = 1, meterBusy = false, lastMeter = 0;
 const half = h => THREE.DataUtils.fromHalfFloat(h);
 async function meter(now) {
@@ -668,7 +760,7 @@ async function meter(now) {
       const l = 0.2126 * half(meterBuf[i]) + 0.7152 * half(meterBuf[i + 1]) + 0.0722 * half(meterBuf[i + 2]);
       s += Math.log(Math.max(l, 1e-4)); n++;
     }
-    targetExposure = clamp(EXPOSURE_KEY / Math.exp(s / n), 0.03, 3.5);
+    targetExposure = clamp(keyNow() / Math.exp(s / n), 0.03, 3.5);
   } catch (e) { /* ignore */ }
   meterBusy = false;
 }
@@ -686,7 +778,7 @@ function frame(now) {
   if (canvas.width !== Math.floor(window.innerWidth * renderer.getPixelRatio())) onResize();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (started) {
+  if (started && !optionsOpen) {
     const shift = keys.has('Shift');
     let mf = 0, ms = 0, turn = 0, look = 0;
     if (keys.has('ArrowUp') || keys.has('w')) mf += 1;
@@ -706,11 +798,11 @@ function frame(now) {
     let vx = fx * mf - fz * ms, vz = fz * mf + fx * ms;
     const vl = Math.hypot(vx, vz);
     if (vl > 1) { vx /= vl; vz /= vl; }                 // keys: full speed; thumb stick: proportional
-    const speed = WALK * (mf < 0 && !ms ? 0.7 : 1);
+    const speed = WALK * opts.speed * (crouch ? 0.5 : 1) * (mf < 0 && !ms ? 0.7 : 1);
     for (let i = 0; i < 3; i++) [player.x, player.z] = resolve(player.x + vx * speed * dt / 3, player.z + vz * speed * dt / 3, player.feet);
   }
   const fl = floorAt(player.x, player.z, player.feet);
-  if (fl >= player.feet - 1e-4) { player.feet = fl; player.vy = 0; }
+  if (player.vy <= 0 && fl >= player.feet - 1e-4) { player.feet = fl; player.vy = 0; }
   else if (player.vy === 0 && player.feet - fl <= 0.9) player.feet = fl;
   else {
     player.vy -= 32 * dt; player.feet += player.vy * dt;
@@ -722,7 +814,8 @@ function frame(now) {
   for (const s of sliders) if (s.t !== s.target) s.update(dt);
   if (kids) kids.update(dt, player, now);
 
-  player.camY += (player.feet + (player.eyeH ?? EYE) - player.camY) * Math.min(1, dt * 12);   // eyeH: test override
+  const eye = player.eyeH ?? (crouch ? CROUCH_EYE : EYE);   // eyeH: test override
+  player.camY = player.vy !== 0 ? player.feet + eye : player.camY + (player.feet + eye - player.camY) * Math.min(1, dt * 12);
   camera.position.set(player.x, player.camY, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
   sky.position.copy(camera.position);
@@ -741,6 +834,76 @@ function frame(now) {
   bloom.threshold = 3.0 / Math.max(exposure, 1e-3);
   composer.render();
 }
+
+// ----------------------------------------------------- crouch and jump ----
+let crouch = false;
+const crouchBtn = document.getElementById('btnCrouch');
+// room to stand up: nothing solid between crouched and standing head height around the player
+function headroom() {
+  const y0 = player.feet + CROUCH_HI, y1 = player.feet + BODY_HI, r = R - 0.05;
+  return !boxes.some(c => c.y1 > y0 && c.y0 < y1 && (clamp(player.x, c.x0, c.x1) - player.x) ** 2 + (clamp(player.z, c.z0, c.z1) - player.z) ** 2 < r * r);
+}
+function setCrouch(on) {
+  if (!on && !headroom()) return;   // something low overhead: stay down
+  crouch = on; bodyHi = on ? CROUCH_HI : BODY_HI;
+  crouchBtn?.classList.toggle('on', on);
+}
+function jump() {
+  if (!started || optionsOpen || player.vy !== 0) return;
+  if (player.feet - floorAt(player.x, player.z, player.feet) > 0.05) return;
+  if (crouch) { setCrouch(false); if (crouch) return; }
+  player.vy = JUMP_V; player.feet += 0.02;
+}
+for (const [id, fn] of [['btnJump', jump], ['btnCrouch', () => setCrouch(!crouch)]]) {
+  document.getElementById(id)?.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fn(); });
+}
+
+// --------------------------------------------------------- options panel ----
+let optionsOpen = false;
+const optEl = document.getElementById('options');
+function showOptions(on) {
+  optionsOpen = on;
+  optEl.classList.toggle('hidden', !on);
+  document.body.classList.toggle('options-open', on);
+  keys.clear(); stick.x = stick.y = 0;
+  if (on) syncOptionsUI(); else canvas.focus();
+}
+const OPT_UI = [
+  ['oSpeed', 'speed', v => `${v.toFixed(1)}×`],
+  ['oBright', 'brightness', v => `${v > 0 ? '+' : ''}${v.toFixed(1)}`],
+  ['oLights', 'lights', v => `${Math.round(v * 100)}%`],
+  ['oBloom', 'bloom', v => `${Math.round(v * 100)}%`],
+  ['oFov', 'fov', v => `${Math.round(v)}°`],
+];
+function syncOptionsUI() {
+  for (const [id, k, fmt] of OPT_UI) {
+    const el = document.getElementById(id);
+    el.value = opts[k];
+    document.getElementById(id + 'V').textContent = fmt(+opts[k]);
+  }
+  for (const r of document.querySelectorAll('input[name=tod]')) r.checked = r.value === opts.tod;
+}
+for (const [id, k, fmt] of OPT_UI) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    opts[k] = +el.value;
+    document.getElementById(id + 'V').textContent = fmt(opts[k]);
+    applyLighting(false); saveOpts();
+  });
+  if (k === 'lights') el.addEventListener('change', () => applyLighting(true));
+}
+for (const r of document.querySelectorAll('input[name=tod]')) {
+  r.addEventListener('change', () => { if (!r.checked) return; opts.tod = r.value; applyLighting(true); saveOpts(); });
+}
+document.getElementById('oReset').addEventListener('click', () => {
+  const relight = opts.tod !== DEFAULTS.tod || opts.lights !== DEFAULTS.lights;
+  Object.assign(opts, DEFAULTS); syncOptionsUI(); applyLighting(relight); saveOpts();
+});
+document.getElementById('oClose').addEventListener('click', () => showOptions(false));
+document.getElementById('optBtn').addEventListener('click', () => showOptions(!optionsOpen));
+if (!bake?.rt) for (const el of document.querySelectorAll('.needs-layers')) el.classList.add('disabled');   // older single-layer bake
+syncOptionsUI();
+if (opts.tod !== 'day' || opts.lights !== 1) applyLighting(true);
 
 // ---------------------------------------------------------------- start ----
 const startEl = document.getElementById('start');
@@ -777,12 +940,12 @@ function snap(x, z, feet, yaw, pitch = 0) {
     renderer.setRenderTarget(null);
     let s = 0, n = 0;
     for (let k = 0; k < buf.length; k += 4) { s += Math.log(Math.max(1e-4, 0.2126 * half(buf[k]) + 0.7152 * half(buf[k + 1]) + 0.0722 * half(buf[k + 2]))); n++; }
-    exposure = targetExposure = clamp(EXPOSURE_KEY / Math.exp(s / n), 0.03, 3.5);
+    exposure = targetExposure = clamp(keyNow() / Math.exp(s / n), 0.03, 3.5);
     renderer.toneMappingExposure = exposure;
   }
   bloom.threshold = 3.0 / Math.max(exposure, 1e-3);
   composer.render();
   return exposure;
 }
-window.__house = { player, doors, garageDoors, sliders, camera, keys, renderer, scene, begin, snap, kids };
+window.__house = { player, doors, garageDoors, sliders, camera, keys, renderer, scene, begin, snap, kids, opts, applyLighting, jump, setCrouch };
 requestAnimationFrame(frame);
