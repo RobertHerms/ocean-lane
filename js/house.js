@@ -576,13 +576,16 @@ function moldings(b) {
           const lo = Math.max(e0, wi.a0), hi = Math.min(e1, wi.a1);
           if (hi - lo < 0.05) continue;
           const face = wi.c + s * wi.t / 2;
-          const run = (y, profile, casingGap, pad) => {
+          // draw = false: only work out the runs (baseboard and chair rail are drawn by wallTrim(), which
+          // follows the outline of the walls round outside corners and through uncased openings)
+          const run = (y, profile, casingGap, pad, draw = true) => {
             if (y < w.y[0] - EPS || y > w.y[1] + EPS) return;
             if (profile === BASE && w.y[1] < y + 0.6) return;      // wall stops at the floor (under a railing): no baseboard
             let segs = [[lo, hi]];
             for (const op of w.ops) {
               if (op.b0 - 0.05 <= y + pad && op.b1 + 0.05 >= y - pad) segs = subtract(segs, op.a0 - casingGap, op.a1 + casingGap);
             }
+            if (!draw) return segs;
             for (let [a, bb] of segs) {
               if (bb - a < 0.05) continue;
               let m0 = 0, m1 = 0;
@@ -600,8 +603,8 @@ function moldings(b) {
             return segs;
           };
           if (kind === 'crown') { run(r.h[1], CROWN, 0, 0.3); continue; }
-          if (kind === 'base') { run(r.baseY, BASE, 0.29, 0.3); continue; }
-          const segs = run(r.h[0], BASE, 0.29, 0.3) || [];
+          if (kind === 'base') continue;
+          const segs = run(r.h[0], BASE, 0.29, 0.3, false) || [];
           // duplex outlets along the walls (not in closets)
           if (!/closet/i.test(r.name) && r.id !== 'util') {
             for (const [a, bb] of segs) {
@@ -614,8 +617,112 @@ function moldings(b) {
             }
           }
           if (r.crown) run(r.h[1], CROWN, 0, 0.3);
-          if (r.rail) run(r.h[0] + r.rail, RAIL, 0.29, 0.15);
         }
+      }
+    }
+  }
+  // baseboard at each floor level, chair rail where a room has one
+  const skip = new Set(['rear', 'stcl', 'rcl']);
+  const levels = new Set(L.ROOMS.filter(r => !skip.has(r.id)).map(r => r.baseY ?? r.h[0]));
+  const inRects = (rects, x, z) => rects.some(([x0, x1, z0, z1]) => x >= x0 - EPS && x <= x1 + EPS && z >= z0 - EPS && z <= z1 + EPS);
+  for (const y of levels) {
+    wallTrim(b, BASE, y, 0.3, (r, x, z) => !skip.has(r.id) && !(r.bay && inRects([r.bay], x, z))
+      && (r.baseY !== undefined ? Math.abs(r.baseY - y) < EPS && inRects(r.baseRects, x, z) : Math.abs(r.h[0] - y) < EPS));
+  }
+  for (const r of L.ROOMS.filter(q => q.rail)) wallTrim(b, RAIL, r.h[0] + r.rail, 0.15, q => q === r);
+}
+
+// Baseboard / chair rail following the plan outline of the walls at height y: the wall footprints there
+// (less the openings that reach that height) are merged, and the profile runs along every edge of the
+// outline that faces a room `has(room, x, z)` accepts. Round an outside corner (a wall end, a pier)
+// the runs are mitred and carry on along the end face; through a plain drywall-wrapped opening they
+// wrap the jambs; beside cased openings (doors, windows, the pass-through) they stop at the casing.
+function wallTrim(b, profile, y, pad, has) {
+  const GAP = 0.29;
+  // how the trim treats each opening: 'wrap' (plain drywall-wrapped: round the jambs), 'cased' (stop at
+  // the casing) or 'none' (an opening the whole length of its wall, like the bow window's header)
+  const treat = (op, l) => (op.kind !== 'open' || op.passThrough || op.garageDoor ? 'cased' : op.a0 <= l.a0 + 1e-6 && op.a1 >= l.a1 - 1e-6 ? 'none' : 'wrap');
+  const rects = [];                  // footprints [x0, x1, z0, z1]
+  const lines = [];                  // wall lines with their ops, to find casings and jambs
+  for (const w of L.WALLS) {
+    if (y < w.y[0] - 0.05 || w.y[1] < y + 0.6) continue;      // wall absent here, or it stops at the floor (under a railing)
+    const { alongX, t, c, a0, a1 } = wallInfo(w);
+    const ops = w.ops.filter(op => op.b0 - 0.05 <= y + pad && op.b1 + 0.05 >= y - pad);
+    lines.push({ alongX, t, c, a0, a1, ops });
+    const p0 = joinedAt(w, a0, -1, y, y + 0.6) ? a0 - 0.01 : a0 - t / 2, p1 = joinedAt(w, a1, 1, y, y + 0.6) ? a1 + 0.01 : a1 + t / 2;
+    let segs = [[p0, p1]];
+    for (const op of ops) segs = subtract(segs, op.a0, op.a1);
+    for (const [s0, s1] of segs) if (s1 - s0 > 1e-3) rects.push(alongX ? [s0, s1, c - t / 2, c + t / 2] : [c - t / 2, c + t / 2, s0, s1]);
+  }
+  // cell grid over all the rect bounds; a cell is solid if a footprint covers it
+  const snap = v => Math.round(v * 1000) / 1000;
+  const xs = [...new Set(rects.flatMap(r => [snap(r[0]), snap(r[1])]))].sort((p, q) => p - q);
+  const zs = [...new Set(rects.flatMap(r => [snap(r[2]), snap(r[3])]))].sort((p, q) => p - q);
+  const nx = xs.length - 1, nz = zs.length - 1, solid = new Uint8Array(nx * nz);
+  const xi = new Map(xs.map((v, i) => [v, i])), zi = new Map(zs.map((v, i) => [v, i]));
+  for (const r of rects) {
+    for (let i = xi.get(snap(r[0])); i < xi.get(snap(r[1])); i++) for (let j = zi.get(snap(r[2])); j < zi.get(snap(r[3])); j++) solid[i * nz + j] = 1;
+  }
+  const S = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && solid[i * nz + j] === 1;
+  const solidAt = (x, z) => {
+    let i = 0, j = 0;
+    while (i < nx && xs[i + 1] <= x) i++;
+    while (j < nz && zs[j + 1] <= z) j++;
+    return x > xs[0] && z > zs[0] && x < xs[nx] && z < zs[nz] && S(i, j);
+  };
+  // boundary edges, merged into maximal straight runs: [alongX, c, a0, a1, n] (n = ±1: the room side)
+  const edges = [];
+  for (let j = 0; j <= nz; j++) for (const n of [-1, 1]) {       // edges along x at z = zs[j]
+    let start = null;
+    for (let i = 0; i <= nx; i++) {
+      const on = i < nx && (n > 0 ? S(i, j - 1) && !S(i, j) : S(i, j) && !S(i, j - 1));
+      if (on && start === null) start = i;
+      if (!on && start !== null) { edges.push([true, zs[j], xs[start], xs[i], n]); start = null; }
+    }
+  }
+  for (let i = 0; i <= nx; i++) for (const n of [-1, 1]) {       // edges along z at x = xs[i]
+    let start = null;
+    for (let j = 0; j <= nz; j++) {
+      const on = j < nz && (n > 0 ? S(i - 1, j) && !S(i, j) : S(i, j) && !S(i - 1, j));
+      if (on && start === null) start = j;
+      if (!on && start !== null) { edges.push([false, xs[i], zs[start], zs[j], n]); start = null; }
+    }
+  }
+  const P = (alongX, c, a) => (alongX ? [a, c] : [c, a]);
+  for (const [alongX, c, e0, e1, n] of edges) {
+    // a jamb of a cased opening (door, window, pass-through): the casing covers it
+    const atEdge = op => Math.abs(op.a0 - c) < 0.02 || Math.abs(op.a1 - c) < 0.02;
+    const jamb = lines.find(l => l.alongX !== alongX && e0 >= l.c - l.t / 2 - 0.02 && e1 <= l.c + l.t / 2 + 0.02 && l.ops.some(atEdge));
+    if (jamb && !jamb.ops.some(op => atEdge(op) && treat(op, jamb) === 'wrap')) continue;
+    // split where the room in front changes between trimmed / not trimmed, then cut round the casings
+    let segs = [], cur = null;
+    for (let a = e0; a < e1 - 1e-6; a = Math.min(e1, a + 0.1)) {
+      const m = Math.min(e1, a + 0.1), [px, pz] = P(alongX, c + n * 0.3, (a + m) / 2);
+      const r = roomAt(px, pz, y + 1), ok = !!r && has(r, px, pz);
+      if (ok && !cur) { cur = [a, m]; segs.push(cur); } else if (ok) cur[1] = m; else cur = null;
+    }
+    for (const l of lines) {
+      if (l.alongX !== alongX || Math.abs(Math.abs(l.c - c) - l.t / 2) > 0.02) continue;
+      for (const op of l.ops) if (treat(op, l) === 'cased') segs = subtract(segs, op.a0 - GAP, op.a1 + GAP);
+    }
+    // outside corner at an end of the edge: the solid stops just past it → mitre
+    const convex = (a, dir) => {
+      const [qx, qz] = P(alongX, c + n * 0.01, a + dir * 0.01), [rx, rz] = P(alongX, c - n * 0.01, a + dir * 0.01);
+      return !solidAt(qx, qz) && !solidAt(rx, rz);
+    };
+    // inside corner: the solid carries on across the face line just past the end (the end is buried)
+    const concave = (a, dir) => { const [qx, qz] = P(alongX, c + n * 0.01, a + dir * 0.01); return solidAt(qx, qz); };
+    for (const [a, bb] of segs) {
+      if (bb - a < 0.05) continue;
+      const m0 = Math.abs(a - e0) < 1e-6 && convex(e0, -1) ? 1 : 0, m1 = Math.abs(bb - e1) < 1e-6 && convex(e1, 1) ? 1 : 0;
+      const origin = alongX ? [a, y, c] : [c, y, a];
+      extrude(b, profile, origin, alongX ? [1, 0, 0] : [0, 0, 1], alongX ? [0, 0, n] : [n, 0, 0], bb - a, TRIM, { dens: 8, m0, m1 });
+      // square ends that show (the room changes, a casing gap) get the profile as an end cap
+      for (const [e, dir, m] of [[a, -1, m0], [bb, 1, m1]]) {
+        if (m || concave(e, dir)) continue;
+        const loop = [...(profile[0][0] ? [[0, profile[0][1]]] : []), ...profile, ...(profile[profile.length - 1][0] ? [[0, profile[profile.length - 1][1]]] : [])];   // closed on the wall
+        const pts = loop.map(([o, u]) => (alongX ? [e, y + u, c + n * o] : [c + n * o, y + u, e]));
+        b.poly(pts, TRIM, { n: alongX ? [dir, 0, 0] : [0, 0, dir], dens: 8 });
       }
     }
   }

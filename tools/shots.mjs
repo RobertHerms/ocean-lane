@@ -40,6 +40,9 @@ const POSES = {
   garage: [8, 20, 0, 0.6, 0.1],
   garage_bench: [7.5, 9.2, 0, 0.35, 0.05],
   garage_door: [12.5, 17.5, 0, -1.5708, 0.05],
+  base_fridge_pier: [34.5, 15.8, 10, 0.6, -0.45],
+  base_play_opening: [34, 17, 0, 1.5708, -0.3],
+  base_hall_corner: [12.5, 14, 10, -2.33, -0.6],
 };
 
 async function loadChromium() {
