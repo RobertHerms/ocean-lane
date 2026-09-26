@@ -34,6 +34,7 @@ export function buildHouse() {
   railings(b);
   fixtures(b, lamps);
   kitchen(b);
+  stairCloset(b);
   furniture(b, mirrors, glass);
   wallArt(b);
   exterior(b);
@@ -88,7 +89,7 @@ function walls(b, glass, sliders) {
       const covering = w.ops.filter(op => op.a0 <= mid && op.a1 >= mid);
       let ranges = [w.y.slice()];
       for (const op of covering) ranges = subtract(ranges, op.b0, op.b1);
-      for (const cut of [L.MAIN - 0.1, L.MAIN + 3]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
+      for (const cut of [L.MAIN - 0.1, L.MAIN + 3, ...(w.yCuts || [])]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
       for (const [s, e0] of ranges) {
         if (e0 - s < 1e-3) continue;
         // a free wall end runs on by half its thickness to close the corner; where another wall carries
@@ -470,8 +471,8 @@ function floorsAndCeilings(b, glass) {
   b.poly([[kx, F, L.FU.z1], [28.8, F, L.FU.z1], [28.8, F, L.FD.z1], [kx, F, L.FD.z1]], 'tileLanding', { n: [0, 1, 0] });
   b.poly([[20.8, F, L.FD.z1], [28.8, F, L.FD.z1], [28.8, F, 30], [20.8, F, 30]], 'tileLanding', { n: [0, 1, 0] });
   b.poly([[35, L.MID, -8], [42.2, L.MID, -8], [42.2, L.MID, -4.4], [35, L.MID, -4.4]], 'carpetBeige', { n: [0, 1, 0] });
-  b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, 20], [20.8, L.LOW, 20]], 'carpetBeige', { n: [0, 1, 0] });
-  b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, L.FU.z1], [24.8, L.LOW, L.FU.z1]], 'carpetBeige', { n: [0, 1, 0] });
+  b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, L.FD.z1], [20.8, L.LOW, L.FD.z1]], 'tileGrey', { n: [0, 1, 0] });   // under the bottom flight
+  b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, 29.75], [24.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // stair closet
   b.poly([[20.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 19.5], [28.8, L.LOW_CEIL, 20], [20.8, L.LOW_CEIL, 20]], 'ceiling', { n: [0, -1, 0] });
   // exposed edges of the main floor at the stair openings
   b.poly([[20.8, L.LOW_CEIL - 0.05, 20], [24.8, L.LOW_CEIL - 0.05, 20], [24.8, L.MAIN, 20], [20.8, L.MAIN, 20]], 'paint:' + L.PAINT.tan, { n: [0, 0, 1] });
@@ -618,6 +619,7 @@ function switchPlates(b) {
 const SOFFITS = {
   frontUp: z => L.FRONT - 0.7 + (L.FU.z1 - z) / (L.FU.z1 - L.FU.z0) * (L.MAIN - 1.25 - (L.FRONT - 0.7)),
   rearUp: z => L.MID - 0.7 + (z + 4.4) / 4.4 * (L.MAIN - 1.25 - (L.MID - 0.7)),
+  frontDown: z => L.LOW + (z - L.FD.z0 - 1.6) * (L.FRONT - L.LOW) / (L.FD.z1 - L.FD.z0),   // meets the floor under the third step
 };
 // Steps of a flight: tread top, z extent and the edge toward the high end.
 function flightSteps(f) {
@@ -649,7 +651,7 @@ function stairs(b) {
       const zb = za + d;
       const nose = upAtZ1 ? -0.09 : 0.09;          // nosing overhangs toward the low end
       const zFront = upAtZ1 ? za : zb;
-      const base = soffit ? soffit(upAtZ1 ? zb : za) : 0;
+      const base = soffit ? Math.max(0, soffit(upAtZ1 ? zb : za)) : 0;
       b.box(x0, x1, base, top - 0.09, Math.min(za, zb), Math.max(za, zb), riserMat, { skip: ['ny', 'py'], dens: 6 });
       const t0 = Math.min(za, zb, zFront + nose), t1 = Math.max(za, zb, zFront + nose);
       // open side: tread ends run 0.05 past the stringer and show their end grain
@@ -658,8 +660,10 @@ function stairs(b) {
       b.box(tx0, tx1, top - 0.09, top, t0, t1, treadMat, { skip: tSkip, dens: 7, uv: f.finish === 'oak' ? 'face' : undefined, bevel: 0.035 });
     }
     if (soffit) {
-      const zLow = upAtZ1 ? z0 : z1, zHigh = upAtZ1 ? z1 : z0;
-      b.poly([[fx0, soffit(zLow), zLow], [fx1, soffit(zLow), zLow], [fx1, soffit(zHigh), zHigh], [fx0, soffit(zHigh), zHigh]], 'paint:' + L.PAINT.closet, { n: [0, -1, 0] });
+      let zLow = upAtZ1 ? z0 : z1;
+      const zHigh = upAtZ1 ? z1 : z0;
+      if (soffit(zLow) < 0) zLow += (zHigh - zLow) * -soffit(zLow) / (soffit(zHigh) - soffit(zLow));   // from where it meets the floor
+      b.poly([[fx0, soffit(zLow), zLow], [fx1, soffit(zLow), zLow], [fx1, soffit(zHigh), zHigh], [fx0, soffit(zHigh), zHigh]], 'paint:' + (f.under || L.PAINT.closet), { n: [0, -1, 0] });
     }
   }
   // knee walls under the open side of a flight: the wall stops under each riser block (the treads
@@ -689,23 +693,31 @@ function stairs(b) {
     const fl = L.FLIGHTS.find(f => f.id === k.flight);
     const soff = SOFFITS[fl.id];
     const lo = Math.min(fl.h0, fl.h1), hi = Math.max(fl.h0, fl.h1), hiZ = fl.h0 > fl.h1 ? fl.r[2] : fl.r[3];
-    const segs = flightSteps(fl).map(s => ({ za: s.za, zb: s.zb, top: soff(s.upper), band: true }));
+    let segs = flightSteps(fl).map(s => ({ za: s.za, zb: s.zb, top: soff(s.upper), band: true }));
     if (k.z0 < fl.r[2] - 1e-6) segs.push({ za: k.z0, zb: fl.r[2], top: Math.abs(fl.r[2] - hiZ) < 1e-6 ? hi : lo, cap: true });
     if (k.z1 > fl.r[3] + 1e-6) segs.push({ za: fl.r[3], zb: k.z1, top: Math.abs(fl.r[3] - hiZ) < 1e-6 ? hi : lo, cap: true });
-    const T = OPEN_W;
+    const T = OPEN_W, h = k.hole;
+    // a triangular opening at the wall's foot: its top edge rises from h.z0 at the floor and drops back at h.z1
+    const bot = h ? (g, z) => (g.za >= h.z0 - 1e-6 && g.zb <= h.z1 + 1e-6 ? (z - h.z0) * h.slope : 0) : () => 0;
+    if (h) for (const zc of [h.z0, h.z1]) segs = segs.flatMap(g => (zc > g.za + 1e-6 && zc < g.zb - 1e-6 ? [{ ...g, zb: zc }, { ...g, za: zc }] : [g]));
     for (const s of [-1, 1]) {
       const x = k.x + s * T;
       for (const g of segs) {
         const r = roomAt(x + s * 0.3, (g.za + g.zb) / 2, 1);
-        const paint = paintFor(r, 1);
+        const paint = paintFor(r, 1), ba = bot(g, g.za), bb = bot(g, g.zb);
         if (g.band && s === fl.open) {
           const ya = Math.min(soff(g.za) - 0.6, g.top), yb = Math.min(soff(g.zb) - 0.6, g.top);
-          b.poly([[x, 0, g.za], [x, 0, g.zb], [x, yb, g.zb], [x, ya, g.za]], paint, { n: [s, 0, 0] });
+          b.poly([[x, ba, g.za], [x, bb, g.zb], [x, yb, g.zb], [x, ya, g.za]], paint, { n: [s, 0, 0] });
           b.poly([[x, ya, g.za], [x, yb, g.zb], [x, g.top, g.zb], [x, g.top, g.za]], TRIM, { n: [s, 0, 0] });
         } else {
-          b.poly([[x, 0, g.za], [x, 0, g.zb], [x, g.top, g.zb], [x, g.top, g.za]], paint, { n: [s, 0, 0] });
+          b.poly([[x, ba, g.za], [x, bb, g.zb], [x, g.top, g.zb], [x, g.top, g.za]], paint, { n: [s, 0, 0] });
         }
       }
+    }
+    if (h) {
+      const yt = (h.z1 - h.z0) * h.slope, mat = paintFor(roomAt(k.x + 0.5, (h.z0 + h.z1) / 2, 1), 1);
+      b.poly([[k.x - T, 0, h.z0], [k.x + T, 0, h.z0], [k.x + T, yt, h.z1], [k.x - T, yt, h.z1]], mat, { n: [0, -1, h.slope] });
+      b.poly([[k.x - T, 0, h.z1], [k.x + T, 0, h.z1], [k.x + T, yt, h.z1], [k.x - T, yt, h.z1]], mat, { n: [0, 0, -1] });
     }
     for (const g of segs) {
       if (g.cap) b.poly([[k.x - T, g.top, g.za], [k.x + T, g.top, g.za], [k.x + T, g.top, g.zb], [k.x - T, g.top, g.zb]], TRIM, { n: [0, 1, 0] });
@@ -865,6 +877,13 @@ function fixtures(b, lamps) {
         b.prim(new THREE.CylinderGeometry(0.11, 0.11, 0.01, 20), 'lampGlow', hx, hy + dy * 0.23, z + dz * 0.23, 0, { rx: -3 * Math.PI / 4, bake: false });
         lamps.push({ x: hx, y: hy + dy * 0.53, z: z + dz * 0.53, r: 0.12, kind: 'omni', I: 6 });
       }
+    } else if (f.kind === 'flush') {
+      // small white flush dome (11")
+      b.prim(new THREE.CylinderGeometry(0.46, 0.46, 0.04, 28), 'plate', x, y - 0.02, z);
+      const g = new THREE.SphereGeometry(0.4, 24, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+      g.scale(1, 0.45, 1);
+      b.prim(g, 'frosted', x, y - 0.04, z, 0, { bake: false });
+      lamps.push({ x, y: y - 0.3, z, r: 0.25, kind: 'omni', I: 5 });
     } else if (f.kind === 'dome') {
       b.prim(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 32), 'bronze', x, y - 0.025, z);
       const g = new THREE.SphereGeometry(0.58, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
@@ -934,6 +953,49 @@ function fixtures(b, lamps) {
       }
     }
   }
+}
+
+// ========================================================= stair closet ===
+// Storage closet under the front stairs: runs from its door under the top flight and on under the entry
+// landing to the front wall. White walls, grey tile, a flat ceiling under the landing, a foundation ledge
+// along the front wall, a wire-shelving alcove with a bifold door, a black steel cabinet, and a triangular
+// opening (in the knee wall, see stairs()) into more storage under the bottom flight.
+function stairCloset(b) {
+  const WH = 'paint:' + L.PAINT.storage, C = L.FRONT - 0.7, x0 = 24.8 + OPEN_W, xE = 28.55;
+  b.poly([[x0, C, L.FU.z1], [xE, C, L.FU.z1], [xE, C, 29.75], [x0, C, 29.75]], WH, { n: [0, -1, 0] });            // flat ceiling
+  // white linings where the stairwell's walls run on above the landing height (their faces are tan there)
+  const zm = L.FU.z1 - (L.FRONT - C) / ((L.MAIN - 1.25 - C) / (L.FU.z1 - L.FU.z0));                             // soffit at FRONT
+  b.poly([[xE - 0.01, L.FRONT, 19.5], [xE - 0.01, L.FRONT, zm], [xE - 0.01, L.MAIN - 1.25, L.FU.z0], [xE - 0.01, L.MAIN - 1.25, 19.5]], WH, { n: [-1, 0, 0] });
+  b.poly([[xE - 0.01, L.MAIN - 1.25, 19.5], [xE - 0.01, L.MAIN - 1.25, L.FU.z0], [xE - 0.01, L.LOW_CEIL, L.FU.z0], [xE - 0.01, L.LOW_CEIL, 19.5]], WH, { n: [-1, 0, 0] });
+  b.poly([[x0, L.LOW + 6.8, 19.71], [xE, L.LOW + 6.8, 19.71], [xE, L.LOW_CEIL, 19.71], [x0, L.LOW_CEIL, 19.71]], WH, { n: [0, 0, 1] });
+  const fd = z => L.LOW + (z - L.FD.z0 - 1.6) * (L.FRONT - L.LOW) / (L.FD.z1 - L.FD.z0), zf = L.FD.z0 + 1.6;       // under the bottom flight
+  b.poly([[21.01, 0, zf], [21.01, 0, L.FD.z1], [21.01, fd(L.FD.z1), L.FD.z1]], WH, { n: [1, 0, 0] });
+  // marble threshold in the doorway
+  b.box(25.5, 28.1, L.LOW, L.LOW + 0.04, 19.28, 19.72, 'tileMarble', { skip: ['ny'], dens: 8 });
+  // foundation ledge along the front wall
+  b.box(x0, xE, L.LOW, L.LOW + 4.5, 28.95, 29.75, WH, { skip: ['ny', 'pz', 'nx', 'px'], collide: true });
+  // wire-shelving alcove: framed box against the east wall, open to the west
+  const za = 24.9, zb = 27.3, ax = 27.2, hy = 5.45;
+  b.box(ax, xE, 0, C, za, za + 0.1, WH, { skip: ['px', 'ny', 'py'] });
+  b.box(ax, xE, 0, C, zb - 0.1, zb, WH, { skip: ['px', 'ny', 'py'] });
+  b.box(ax, xE, hy, C, za + 0.1, zb - 0.1, WH, { skip: ['px', 'py'] });
+  for (const [z0, z1] of [[za - 0.05, za + 0.14], [zb - 0.14, zb + 0.05]]) b.box(ax - 0.05, ax, 0, hy + 0.1, z0, z1, TRIM, { skip: ['px', 'ny'], dens: 8 });
+  b.box(ax - 0.05, ax, hy - 0.1, hy + 0.1, za + 0.14, zb - 0.14, TRIM, { skip: ['px'], dens: 8 });
+  for (const y of [1.0, 2.2, 3.4, 4.6]) {
+    for (const x of [ax + 0.12, xE - 0.04]) b.mbox(x - 0.012, x + 0.012, y - 0.03, y + 0.012, za + 0.1, zb - 0.1, 'plate');
+    for (let z = za + 0.16; z < zb - 0.12; z += 0.1) b.mbox(ax + 0.12, xE - 0.04, y - 0.006, y + 0.006, z - 0.006, z + 0.006, 'plate');
+  }
+  b.collider(ax - 0.05, xE, 0, C, za - 0.05, zb + 0.05);
+  // bifold: the south pair closed in the opening, the north pair folded open against the jamb
+  const leaf = (x0l, x1l, z0l, z1l) => b.box(x0l, x1l, 0.05, hy - 0.12, z0l, z1l, 'doorWhite', { dens: 7, bevel: 0.01 });
+  leaf(ax + 0.02, ax + 0.1, 26.12, 26.64); leaf(ax + 0.02, ax + 0.1, 26.66, zb - 0.16);
+  leaf(ax - 0.5, ax + 0.06, za + 0.16, za + 0.24); leaf(ax - 0.5, ax + 0.06, za + 0.26, za + 0.34);
+  b.prim(new THREE.SphereGeometry(0.035, 10, 8), 'nickel', ax - 0.01, 3.0, 26.2);
+  // tall black steel cabinet on the east wall, beyond the door's swing
+  const cz0 = 22.4, cz1 = cz0 + 1.3, cx = xE - 1.2;
+  b.box(cx, xE, L.LOW, L.LOW + 4.5, cz0, cz1, 'tvBody', { skip: ['px', 'ny'], collide: true, bevel: 0.015 });
+  b.mbox(cx - 0.005, cx + 0.002, 0.1, 4.4, (cz0 + cz1) / 2 - 0.008, (cz0 + cz1) / 2 + 0.008, 'paint:#050505');
+  for (const dz of [-0.12, 0.12]) b.mbox(cx - 0.05, cx, 2.5, 2.9, (cz0 + cz1) / 2 + dz - 0.015, (cz0 + cz1) / 2 + dz + 0.015, 'nickel');
 }
 
 // =============================================================== kitchen ===

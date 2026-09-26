@@ -43,6 +43,7 @@ export const PAINT = {
   halfBath: '#ccbea5',
   garage: '#e6e4de',
   closet: '#e2ddd3',
+  storage: '#ecebe8',     // closet under the front stairs
   ceiling: '#f2f0eb',
   trim: '#f4f2ec',
   siding: '#d9d3c6',
@@ -72,6 +73,9 @@ export const ROOMS = [
   room('cl3', 'Bedroom 3 closet', [MAIN, MAIN_CEIL], [[14.2, 18.9, 15.6, 18.2]], 'wood', PAINT.closet),
   room('lc', 'Linen closet', [MAIN, MAIN_CEIL], [[18.9, 20.8, 15.6, 18.2]], 'wood', PAINT.closet),
   room('upcl', 'Coat closet', [MAIN, MAIN_CEIL], [[20.8, 24.8, 15.6, 20]], 'wood', PAINT.closet),
+  // storage closet under the front stairs: under the top flight and on under the entry landing to the front
+  // wall (listed before the stairwell so the space below the landing reads as the closet)
+  room('stcl', 'Closet', [LOW, FRONT], [[24.8, 28.55, 19.5, 29.75]], 'tileGrey', PAINT.storage),
   // two-storey stairwells
   room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileLanding', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
     baseY: FRONT, baseRects: [[20.8, 24.8, FD.z1, 30], [24.8, 28.8, FU.z1, 30]] }),
@@ -84,7 +88,6 @@ export const ROOMS = [
   room('clN', 'Closet', [LOW, LOW_CEIL], [[25.2, 28.8, 0, 2.3]], 'carpetBeige', PAINT.closet),
   room('util', 'Utility', [LOW, LOW_CEIL], [[25.2, 28.8, HB_HALL, 14.5]], 'concrete', PAINT.garage),
   room('play', 'Playroom', [LOW, LOW_CEIL], [[28.8, 45, 0, 35], [25.2, 28.8, 2.3, HB_HALL], [20.8, 28.8, 14.5, 19.5]], 'carpetBeige', PAINT.lower, { crown: true }),
-  room('stcl', 'Closet', [LOW, MAIN], [[24.8, 28.8, 19.5, FU.z1]], 'carpetBeige', PAINT.closet),
   room('rcl', 'Closet', [LOW, MAIN], [[35, 38.9, -4.4, 0]], 'carpetBeige', PAINT.closet),
 ];
 
@@ -108,7 +111,7 @@ export const WALLS = [
     hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
   wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T }),      // same thickness as the foyer wall it continues
   wx(30, 20.85, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
-    win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], EXT),
+    win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], { ...EXT, yCuts: [FRONT] }),   // yCuts: split the faces there (closet below the landing)
   wz(28.8, 30, 35, ALL, [], EXT),
   wx(35, 28.8, 45, LO, [loWin(31.8, 34.7), loWin(34.7, 38.9), loWin(38.9, 41.6)], EXT),
   wx(35, 28.8, 31.2, HI, [], EXT), wx(35, 43.5, 45, HI, [], EXT),
@@ -155,7 +158,7 @@ export const WALLS = [
   wz(24.8, 15.6, 20, HI, [door(16.1, 18.6, MAIN)]),          // coat closet: door faces the dining room
   wx(20, 20.8, 24.8, HI),                                  // ...and a solid wall faces the stairs
   wz(20.8, 20, GARAGE_Z, ALL),                             // stairwell west (garage / bedroom 3 side)
-  wz(28.8, 19.5, 30, [0, MAIN + 0.1], [], { t: EXT_T }),   // stairwell east below the living-room railing (flush with the front wall)
+  wz(28.8, 19.5, 30, [0, MAIN + 0.1], [], { t: EXT_T, yCuts: [FRONT] }),   // stairwell east below the living-room railing (flush with the front wall)
   // ---- lower level interior (1st floor plan) ----
   wz(18.3, 0, 14.6, LO),
   wx(4.5, 18.3, 25.2, LO),
@@ -173,7 +176,8 @@ export const WALLS = [
 
 // Solid half-walls beside stair flights (top follows the higher flight), with a balustrade on top.
 export const KNEEWALLS = [
-  { x: 24.8, z0: 19.5, z1: FD.z1, flight: 'frontUp' },      // carries on beside the landing to the top of the bottom flight
+  { x: 24.8, z0: 19.5, z1: FD.z1, flight: 'frontUp',       // carries on beside the landing to the top of the bottom flight;
+    hole: { z0: 20.5, z1: 26, slope: (FRONT - LOW) / (FD.z1 - FD.z0) } },   // a triangular opening at its foot, top edge with the bottom flight
   { x: 38.9, z0: -4.4, z1: 0, flight: 'rearUp', closed: true },
 ];
 
@@ -257,8 +261,8 @@ export const FLOORS = [
   { r: [35.6, 39.4, -9.4, -8], h: MID },
 ];
 export const FLIGHTS = [
-  { id: 'frontUp', r: [24.8, 28.8, FU.z0, FU.z1], h0: MAIN, h1: FRONT, risers: 5, finish: 'oak', open: -1 },   // 4 treads
-  { id: 'frontDown', r: [20.8, 24.8, FD.z0, FD.z1], h0: LOW, h1: FRONT, risers: 11, finish: 'oak' },            // 10 treads
+  { id: 'frontUp', r: [24.8, 28.8, FU.z0, FU.z1], h0: MAIN, h1: FRONT, risers: 5, finish: 'oak', open: -1, under: PAINT.storage },   // 4 treads
+  { id: 'frontDown', r: [20.8, 24.8, FD.z0, FD.z1], h0: LOW, h1: FRONT, risers: 11, finish: 'oak', under: PAINT.storage },   // 10 treads; storage under it
   { id: 'frontStoop', r: [22.6, 27, 31.4, 31.4 + 11 * 0.92], h0: FRONT, h1: LOW, risers: 11, finish: 'stone', exterior: true },
   { id: 'rearUp', r: [35, 38.9, -4.4, 0], h0: MID, h1: MAIN, risers: 8, finish: 'carpet' },
   { id: 'rearDown', r: [38.9, 42.2, -4.4, 0], h0: MID, h1: LOW, risers: 8, finish: 'carpet' },
@@ -266,8 +270,7 @@ export const FLIGHTS = [
 ];
 // Solid masses: under landings and closed-off space (b: x0,x1,y0,y1,z0,z1)
 export const SOLIDS = [
-  { b: [24.8, 28.8, 0, FRONT, FU.z1, FD.z1], paint: PAINT.tan },
-  { b: [20.8, 28.8, 0, FRONT, FD.z1, 30], paint: PAINT.tan },
+  { b: [20.8, 25.0, 0, FRONT, FD.z1, 30], paint: PAINT.storage },       // under the landing west of the stair closet
   { b: [35, 42.2, 0, MID, -8, -4.4], paint: PAINT.tan },
   { b: [42.2, 45, 0, MID, -8, -4.4], paint: PAINT.tan },
   { b: [42.0, 45, 0, MID, -4.4, -3.3], paint: PAINT.tan },
@@ -283,12 +286,14 @@ export const SKYLIGHTS = [[21.7, 24.1, 7.8, 10.2], [36.6, 40.4, -6.8, -4.9]];   
 
 // ------------------------------------------------------------- lighting ----
 // Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop | semiflush |
-// wellcan (can in a skylight well's side face) | track (ceiling track with spot heads) | fan (exhaust grille, no light)
+// wellcan (can in a skylight well's side face) | track (ceiling track with spot heads) | fan (exhaust grille, no light) |
+// flush (small white flush dome)
 const can = (x, z, y, I) => ({ kind: 'can', x, z, y, I });
 export const FIXTURES = [
   // playroom recessed lights: two rows of six down the long room; lower halls
   ...[32.85, 40.95].flatMap(x => [2.9, 8.75, 14.6, 20.4, 26.25, 32.1].map(z => can(x, z, LOW_CEIL))),
   { kind: 'semiflush', x: 24.8, z: 17.0, y: LOW_CEIL },                           // lower hall, in the middle (photo 49)
+  { kind: 'flush', x: 26.7, z: 27.5, y: FRONT - 0.7 },                            // stair closet: small white dome on the flat ceiling
   can(27, (2.3 + HB_HALL) / 2, LOW_CEIL),
   can(21.75, 7.0, LOW_CEIL, 24), can(21.75, 12.0, LOW_CEIL, 24),                      // laundry: two high hats on the centreline, door to back wall
   { kind: 'dome', x: 21.7, z: 2.2, y: LOW_CEIL },
