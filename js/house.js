@@ -25,8 +25,8 @@ function paintFor(r, y) {
 // Outside finish at a point on an exterior face (n: its outward normal): stacked ledgestone all round the
 // projecting entry bay (full height) and on the front of the lower storey, cream shakes everywhere else
 function extFinish(x, z, y, n) {
-  if (x > 20.5 && x < 29.1 && z > 27.6 && z < 35.4) return 'ledgestone';
-  if (n[2] > 0.5 && z > 27.5 && y < L.MAIN - 0.1) return 'ledgestone';
+  if (x > 20.55 && x < 29.1 && z > 27.6 && z < 35.7) return 'ledgestone';
+  if (n[2] > 0.5 && z > 27.5 && y < L.SOFFIT_Y) return 'ledgestone';
   return 'siding';
 }
 
@@ -499,10 +499,13 @@ function bowWindow(b, glass) {
   const dirOf = k => { const dx = V[k + 1][0] - V[k][0], dz = V[k + 1][1] - V[k][1], l = Math.hypot(dx, dz); return [dx / l, dz / l, l]; };
   const cross = (k, P, zc) => { const [dx, dz] = dirOf(k); const u = (zc - P[1]) / dz; return [P[0] + dx * u, zc]; };   // facet k's face line through P meets z = zc
   const outline = (P, zc) => [cross(0, P[1], zc), ...P.slice(1, n), cross(n - 1, P[n - 1], zc)];
-  b.poly(outline(I, z).map(([px, pz]) => [px, F, pz]), 'wood', { n: [0, 1, 0] });
+  b.poly(outline(I, z - h).map(([px, pz]) => [px, L.BOW.seat, pz]), TRIM, { n: [0, 1, 0] });   // window seat top, from the header wall's inner face
   b.poly(outline(I, z + 0.25).map(([px, pz]) => [px, ceil, pz]), 'ceiling', { n: [0, -1, 0] });   // from the header's outer face
-  b.poly(outline(O, z + h).map(([px, pz]) => [px, F - 0.6, pz]), 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.poly(outline(O, z + h).map(([px, pz]) => [px, L.BOW.base, pz]), 'soffit', { n: [0, -1, 0], dens: 2 });
   const paint = 'paint:' + L.PAINT.tan, ext = h * Math.tan(step / 2);
+  // cantilevered bow: flat shakes in the wall plane from the header wall's top up to its underside; the seat front inside
+  b.poly([[x0, F - 0.1, z + h], [x1, F - 0.1, z + h], [x1, L.BOW.base, z + h], [x0, L.BOW.base, z + h]], 'siding', { n: [0, 0, 1], dens: 1.2 });
+  b.poly([[x0, F, z - h], [x1, F, z - h], [x1, L.BOW.seat, z - h], [x0, L.BOW.seat, z - h]], paint, { n: [0, 0, -1] });
   for (let k = 0; k < n; k++) {
     const [dx, dz, len] = dirOf(k), first = k === 0, last = k === n - 1;
     const mx = (V[k][0] + V[k + 1][0]) / 2, mz = (V[k][1] + V[k + 1][1]) / 2, ang = Math.atan2(-dz, dx);
@@ -516,17 +519,17 @@ function bowWindow(b, glass) {
       // local frame: the panel runs along +x at z = mz, the room is on the -z side
       const zi = mz - h, zo = mz + h;
       const face = (a0, a1, y0, y1, zz, nz, mat) => sub.poly([[a0, y0, zz], [a1, y0, zz], [a1, y1, zz], [a0, y1, zz]], mat, { n: [0, 0, nz] });
-      face(A0, A1, F, sill, zi, -1, paint); face(A0, wa0, sill, head, zi, -1, paint); face(wa1, A1, sill, head, zi, -1, paint);
+      face(A0, A1, L.BOW.seat, sill, zi, -1, paint); face(A0, wa0, sill, head, zi, -1, paint); face(wa1, A1, sill, head, zi, -1, paint);
       face(A0, A1, head, ceil, zi, -1, paint);
-      face(A0, A1, F - 0.6, F - 0.1, zo, 1, 'vinyl');
-      face(A0, A1, F - 0.1, sill, zo, 1, 'siding'); face(A0, wa0, sill, head, zo, 1, 'siding'); face(wa1, A1, sill, head, zo, 1, 'siding');
+      face(A0, A1, L.BOW.base, sill, zo, 1, 'vinyl');   // white bottom band of the bow unit (0.4 ft)
+      face(A0, wa0, sill, head, zo, 1, 'siding'); face(wa1, A1, sill, head, zo, 1, 'siding');
       face(A0, A1, head, TOP, zo, 1, 'siding');
       sub.poly([[wa0, sill, zi], [wa0, sill, zo], [wa0, head, zo], [wa0, head, zi]], TRIM, { n: [1, 0, 0] });
       sub.poly([[wa1, sill, zi], [wa1, sill, zo], [wa1, head, zo], [wa1, head, zi]], TRIM, { n: [-1, 0, 0] });
       sub.poly([[wa0, sill, mz - 0.05], [wa1, sill, mz - 0.05], [wa1, sill, zo], [wa0, sill, zo]], TRIM, { n: [0, 1, 0] });   // the stool covers the rest
       sub.poly([[wa0, head, zi], [wa1, head, zi], [wa1, head, zo], [wa0, head, zo]], TRIM, { n: [0, -1, 0] });
       sub.poly([[A0, TOP, zi], [A1, TOP, zi], [A1, TOP, zo], [A0, TOP, zo]], 'siding', { n: [0, 1, 0] });
-      const w = { x0: A0, x1: A1, z0: mz, z1: mz, y: [F - 0.6, TOP], ops: [], t, ext: true };
+      const w = { x0: A0, x1: A1, z0: mz, z1: mz, y: [L.BOW.base, TOP], ops: [], t, ext: true };
       windowUnit(sub, gl, w, {
         a0: wa0, a1: wa1, b0: sill, b1: head, kind: 'window', inSide: -1,
         cw: [wa0 - i0 - 0.005, i1 - wa1 - 0.005], xw: [first ? 0.16 : p0 + ext, last ? 0.16 : p1 + ext],
@@ -2534,7 +2537,7 @@ function appliance(b, f, front) {
 // the living-room bump-out. The wing's east slope carries on the main roof's east hip in one plane; its west
 // slope meets the main front slope in a valley. Eaves all round at EAVE. A shed over the rear stair annex.
 const RC = L.MAIN_CEIL, EAVE = RC + 0.48, PITCH = 6.22 / 14.95;
-const RX0 = -1, RX1 = 46, RZ0 = -1, RZ1 = 28.9, WX = 19.85, WZ = 37.2;              // eave lines (0.75 out from the walls)
+const RX0 = -1, RX1 = 46, RZ0 = -1, RZ1 = L.UP_BR_Z + L.EXT_T / 2 + 0.75, WX = 19.85, WZ = 37.6;   // eaves 0.75 out; WZ 0.5 past the bow apex
 const RIDGE_Z = (RZ0 + RZ1) / 2, HX0 = RX0 + (RIDGE_Z - RZ0), HX1 = RX1 - (RIDGE_Z - RZ0);   // main ridge, HX0..HX1
 const WXR = (WX + RX1) / 2, WZA = WZ - (RX1 - WX) / 2, WZV = RZ1 - (WXR - WX);        // wing ridge x, its front apex and valley top
 // each facet: h = EAVE + PITCH * (up · (x, z) - c), drawn as convex plan polygons (mid: a rectangle cut round skylights)
@@ -2600,11 +2603,15 @@ function exterior(b) {
     b.mbox(gx0, gx1, EAVE - 0.45, EAVE - 0.05, gz0, gz1, 'vinyl');
   }
   // three downspouts down the walls, each with an offset under the soffit up into its gutter
-  for (const [x, z, gx, gz] of [[0.45, 28.32, 0.45, 29.11], [45.42, 34.5, 46.21, 34.5], [0.45, -0.42, 0.45, -1.21]]) {
-    b.mbox(x - 0.12, x + 0.12, 0, EAVE - 0.8, z - 0.15, z + 0.15, 'vinyl');
+  const UZ = L.UP_BR_Z + L.EXT_T / 2;   // 30.25: outer face of the upper bedroom wall
+  for (const [x, z, gx, gz, y0 = 0] of [[0.45, UZ + 0.17, 0.45, RZ1 + 0.21, L.SOFFIT_Y - 0.6], [45.42, 34.5, 46.21, 34.5], [0.45, -0.42, 0.45, -1.21]]) {
+    b.mbox(x - 0.12, x + 0.12, y0, EAVE - 0.8, z - 0.15, z + 0.15, 'vinyl');
     b.mbox(Math.min(x, gx) - 0.12, Math.max(x, gx) + 0.12, EAVE - 1.1, EAVE - 0.8, Math.min(z, gz) - 0.12, Math.max(z, gz) + 0.12, 'vinyl');
     b.mbox(gx - 0.12, gx + 0.12, EAVE - 0.8, EAVE - 0.45, gz - 0.12, gz + 0.12, 'vinyl');
   }
+  // the front one kicks back under the soffit to the garage wall and runs down it
+  b.mbox(0.33, 0.57, L.SOFFIT_Y - 0.6, L.SOFFIT_Y - 0.3, 28.17, UZ + 0.32, 'vinyl');
+  b.mbox(0.33, 0.57, 0, L.SOFFIT_Y - 0.3, 28.17, 28.47, 'vinyl');
   // small vent stack near the ridge
   const vx = 25.1, vz = 12.9, vy = hipH(HIP[0], vx, vz - 0.5) - 0.3;
   b.mbox(vx - 0.5, vx + 0.5, vy, vy + 2.3, vz - 0.5, vz + 0.5, 'stoneCap');
@@ -2648,20 +2655,28 @@ function exterior(b) {
     }
   }
   // entry recess: a stone-faced header over the opening down to just above the door, a white ceiling behind it
-  const PORCH = 14.3, hz0 = 35.2, hz1 = 35.3, hTop = roofUnder(24.8, hz1);
+  const PORCH = 17.5, hz0 = 35.2, hz1 = 35.7, hTop = roofUnder(24.8, hz1);   // stone up to a ceiling level with the bedroom window heads
   b.poly([[20.8, PORCH, 30], [28.8, PORCH, 30], [28.8, PORCH, hz0], [20.8, PORCH, hz0]], 'soffit', { n: [0, -1, 0], dens: 2 });
   b.box(20.6, 29.05, PORCH, hTop, hz0, hz1, 'ledgestone', { skip: ['nz', 'py'], dens: 2 });
-  // white corner boards on the outside corners of the shakes (on the front, from the stone's cap up)
-  const CAP = L.MAIN - 0.1, C1 = CAP + 0.14;
-  for (const [x, z, sx, sz, y0x, y0z] of [[-0.25, -0.25, -1, -1, 0, 0], [-0.25, 28.15, -1, 1, 0, C1], [45.25, 35.25, 1, 1, 0, C1], [34.75, -8.25, -1, -1, 0, 0], [45.25, -8.25, 1, -1, 0, 0]]) {
+  // stone pier face at the living-room corner, soffit to header (covers the siding/stone corner under the overhang)
+  b.box(28.55, 29.05, L.SOFFIT_Y, PORCH, L.UP_LIV_Z + 0.25, L.UP_LIV_Z + 0.3, 'ledgestone', { skip: ['nz'], dens: 2 });
+  // white corner boards on the outside corners of the shakes; the upper front corners start at the overhang soffit
+  // (SE: a brown board closing the end of the living-room overhang, only its edge showing on the front)
+  const SY = L.SOFFIT_Y, LZ = L.UP_LIV_Z + L.EXT_T / 2;
+  for (const [x, z, sx, sz, y0x, y0z, wf = 0.38, mat = 'vinyl'] of [[-0.25, -0.25, -1, -1, 0, 0], [-0.25, UZ, -1, 1, SY, SY],
+    [45.25, LZ, 1, 1, SY, SY, 0.08, 'trimBrown'], [34.75, -8.25, -1, -1, 0, 0], [45.25, -8.25, 1, -1, 0, 0]]) {
     const y1 = roofUnder(x + sx * 0.05, z + sz * 0.05);
-    b.mbox(Math.min(x, x + sx * 0.07), Math.max(x, x + sx * 0.07), y0x, y1, Math.min(z, z - sz * 0.38), Math.max(z, z - sz * 0.38), 'vinyl');   // on the x-facing face
-    b.mbox(Math.min(x - sx * 0.38, x + sx * 0.07), Math.max(x - sx * 0.38, x + sx * 0.07), y0z, y1, Math.min(z, z + sz * 0.07), Math.max(z, z + sz * 0.07), 'vinyl');
+    b.mbox(Math.min(x, x + sx * 0.07), Math.max(x, x + sx * 0.07), y0x, y1, Math.min(z, z - sz * 0.38), Math.max(z, z - sz * 0.38), mat);
+    b.mbox(Math.min(x - sx * wf, x + sx * 0.07), Math.max(x - sx * wf, x + sx * 0.07), y0z, y1, Math.min(z, z + sz * 0.07), Math.max(z, z + sz * 0.07), mat);
   }
-  // cap where the front stone stops under the shakes (not under the bow window, whose soffit is there)
-  b.box(-0.25, 20.6, CAP, CAP + 0.14, 28.15, 28.35, 'stoneCap', { skip: ['nz', 'px'], dens: 3, bevel: 0.02 });
-  b.box(29.05, L.BOW.x0 - 0.05, CAP, CAP + 0.14, 35.25, 35.45, 'stoneCap', { skip: ['nz', 'nx'], dens: 3, bevel: 0.02 });
-  b.box(L.BOW.x1 + 0.05, 45.25, CAP, CAP + 0.14, 35.25, 35.45, 'stoneCap', { skip: ['nz'], dens: 3, bevel: 0.02 });
+  b.mbox(-0.32, -0.25, 0, SY, 27.77, 28.15, 'vinyl');   // lower SW garage corner: west leg only (west shakes meet the front stone)
+  b.mbox(45.25, 45.32, 0, SY, 34.87, 35.25, 'vinyl');   // lower SE playroom corner: east leg only (east shakes meet the front stone)
+  b.mbox(29.05, 29.13, SY, roofUnder(29.1, LZ + 0.05), LZ - 0.3, LZ + 0.02, 'trimBrown');   // living-room block's SW corner, beside the recess stone
+  // ---- overhangs: flat white soffit under the cantilevered upper storey, a vinyl starter strip at the foot of the shakes
+  b.poly([[-0.25, SY, 28.15], [20.6, SY, 28.15], [20.6, SY, UZ], [-0.25, SY, UZ]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.poly([[28.55, SY, 35.25], [45.25, SY, 35.25], [45.25, SY, LZ], [28.55, SY, LZ]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.box(-0.25, 20.6, SY, SY + 0.08, UZ, UZ + 0.03, 'vinyl', { skip: ['nz'], dens: 6 });
+  b.box(29.13, 45.17, SY, SY + 0.08, LZ, LZ + 0.03, 'vinyl', { skip: ['nz'], dens: 6 });   // one strip: the bow's underside is higher (BOW.base)
   stoopRails(b);
   planter(b);
   // ---- ground: lawn; asphalt drive with a grey paver soldier course, scored concrete sidewalk and a lawn

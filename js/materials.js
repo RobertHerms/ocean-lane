@@ -30,6 +30,7 @@ const DEFS = {
   trim: { color: '#f4f2ec', roughness: 0.55 },
   ceiling: { color: '#f3f1ec', roughness: 0.95 },
   vinyl: { color: '#f5f4f0', roughness: 0.55 },
+  trimBrown: { color: '#7f6b56', roughness: 0.6 },   // boards at both ends of the living-room overhang
   blind: { color: '#f1efe9', roughness: 0.6 },
   doorWhite: { color: '#f2f0ea', roughness: 0.6 },
   paintedWood: { color: '#f3f1ec', roughness: 0.5 },
