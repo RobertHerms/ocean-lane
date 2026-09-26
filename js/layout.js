@@ -282,7 +282,12 @@ export const SOLIDS = [
 // Between floors: underside = lower-level ceiling
 export const SLABS = [[0, 45, 0, 20], [0, 20.8, 20, GARAGE_Z], [28.8, 45, 20, 35], [42.2, 45, -3.3, 0]];
 export const ROOF = [[0, 45, 0, GARAGE_Z], [20.8, 45, GARAGE_Z, 35], [35, 45, -8, 0]];
-export const SKYLIGHTS = [[21.7, 24.1, 7.8, 10.2], [36.6, 40.4, -6.8, -4.9]];   // hall bath (in front of the vanity), rear stairs
+// r: ceiling opening [x0,x1,z0,z1]. lean: the shaft leans toward the back of the house up to glazing in the
+// roof plane (glass: its x extent, len: its length up the roof from straight above the opening's north edge).
+export const SKYLIGHTS = [
+  { r: [21.7, 24.1, 7.8, 10.2], lean: { glass: [22.0, 23.8], len: 2.0 } },   // hall bath, in front of the vanity
+  { r: [36.6, 40.4, -6.8, -4.9] },                                           // rear stairs
+];
 
 // ------------------------------------------------------------- lighting ----
 // Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop | semiflush |
@@ -314,7 +319,7 @@ export const FIXTURES = [
   can(13.6, 21, MAIN_CEIL), can(18, 21, MAIN_CEIL), can(13.6, 25.5, MAIN_CEIL), can(18, 25.5, MAIN_CEIL),
   // hall bath: over the tub, two over the vanity, one in the skylight well's south face, exhaust fan
   can(23.9, 1.5, MAIN_CEIL), can(20.4, 8.1, MAIN_CEIL), can(20.4, 10.3, MAIN_CEIL),
-  { kind: 'wellcan', x: 22.9, z: SKYLIGHTS[0][3], y: MAIN_CEIL + 1 },
+  { kind: 'wellcan', sky: 0, up: 1 / 3 },
   { kind: 'fan', x: 23.0, z: 5.6, y: MAIN_CEIL },
   // back stairs: a track with two spots under the kitchen / rear-stair header, aimed down the stairs
   { kind: 'track', x0: 37, x1: 41, z: -0.2, y: annexCeil(-0.2), heads: [37.8, 40.2] },

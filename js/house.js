@@ -472,7 +472,7 @@ function floorsAndCeilings(b, glass) {
     for (const [x0, x1, z0, z1] of r.rects) {
       if (!NO_FLOOR.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
       if (NO_CEIL.has(r.id)) continue;
-      const holes = L.SKYLIGHTS.filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
+      const holes = L.SKYLIGHTS.map(sk => sk.r).filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
       const cy = z => (r.slope ? L.annexCeil(z) : r.h[1]);
       const k = Math.hypot(1, L.ANNEX_SLOPE), cn = r.slope ? [0, -1 / k, L.ANNEX_SLOPE / k] : [0, -1, 0];
       const done = r.slope ? [] : ceilDone.filter(([y]) => Math.abs(y - r.h[1]) < 1e-6).map(([, q]) => q);
@@ -504,7 +504,9 @@ function floorsAndCeilings(b, glass) {
     b.box(x0, x1, y0, y1, z0, z1, 'paint:' + s.paint, { skip: ['ny'], collide: true, dens: s.ext ? 2 : undefined });
   }
   // skylight wells up through the roof, glazed at the top of a curb
-  for (const [x0, x1, z0, z1] of L.SKYLIGHTS) {
+  for (const sk of L.SKYLIGHTS) {
+    if (sk.lean) { leaningShaft(b, glass, sk); continue; }
+    const [x0, x1, z0, z1] = sk.r;
     const inAnnex = x0 >= 35 && x1 <= 45 && z0 >= -8 && z1 <= 0;           // well starts at the sloped ceiling there
     const ya = inAnnex ? L.annexCeil(z0) : L.MAIN_CEIL, yb = inAnnex ? L.annexCeil(z1) : L.MAIN_CEIL;
     const y1 = Math.max(roofUnder(x0, z0), roofUnder(x1, z1), roofUnder(x0, z1), roofUnder(x1, z0)) + 0.35;
@@ -520,6 +522,36 @@ function floorsAndCeilings(b, glass) {
     ]) b.poly(pts, 'vinyl', { n, dens: 3 });
     glass.push({ pts: [[x0, y1 + 0.25, z0], [x1, y1 + 0.25, z0], [x1, y1 + 0.25, z1], [x0, y1 + 0.25, z1]], n: [0, -1, 0] });
   }
+}
+// A skylight whose shaft leans toward the back of the house: the glazing lies in the roof plane, its
+// south edge straight above the ceiling opening's north edge, running `len` up the roof toward the north.
+// Returns the ceiling opening r, the glass footprint and top(z) = height of the shaft's top edge.
+function skylightShaft(sk) {
+  const [x0, x1, z0, z1] = sk.r, [gx0, gx1] = sk.lean.glass, xm = (gx0 + gx1) / 2;
+  const top = z => roofUnder(xm, z) + 0.35;
+  const k = (roofUnder(xm, z0 + 0.5) - roofUnder(xm, z0 - 0.5));          // roof rise per foot toward the south
+  const gz1 = z0, gz0 = gz1 - sk.lean.len / Math.hypot(1, k);
+  // south face: from the opening's south edge up to the glass's south edge (a third of the way up: the can)
+  const south = { bot: [(x0 + x1) / 2, L.MAIN_CEIL, z1], top: [xm, top(gz1), gz1] };
+  return { r: sk.r, glass: [gx0, gx1, gz0, gz1], top, south };
+}
+function leaningShaft(b, glass, sk) {
+  const [x0, x1, z0, z1] = sk.r, { glass: [gx0, gx1, gz0, gz1], top } = skylightShaft(sk), C = L.MAIN_CEIL;
+  const ts = top(gz1), tn = top(gz0);
+  b.poly([[x0, C, z1], [x1, C, z1], [gx1, ts, gz1], [gx0, ts, gz1]], 'ceiling', { n: [0, -(ts - C), -(z1 - gz1)] });   // south face (overhangs, faces down-north)
+  b.poly([[x0, C, z0], [x1, C, z0], [gx1, tn, gz0], [gx0, tn, gz0]], 'ceiling', { n: [0, z0 - gz0, tn - C] });          // north face (faces up-south)
+  // east / west faces taper from the opening's width to the glass's: two triangles each (not planar as quads)
+  for (const [xa, xg, s] of [[x0, gx0, 1], [x1, gx1, -1]]) {
+    b.poly([[xa, C, z0], [xa, C, z1], [xg, ts, gz1]], 'ceiling', { n: [s, 0, 0] });
+    b.poly([[xa, C, z0], [xg, ts, gz1], [xg, tn, gz0]], 'ceiling', { n: [s, 0, 0] });
+  }
+  // vinyl curb round the glass, following the roof slope (from the roof's underside up past the glass)
+  const cx0 = gx0 - 0.2, cx1 = gx1 + 0.2, cz0 = gz0 - 0.2, cz1 = gz1 + 0.2, lo = z => roofUnder((gx0 + gx1) / 2, z), hi = z => top(z) + 0.3;
+  b.poly([[cx0, lo(cz0), cz0], [cx1, lo(cz0), cz0], [cx1, hi(cz0), cz0], [cx0, hi(cz0), cz0]], 'vinyl', { n: [0, 0, -1], dens: 3 });
+  b.poly([[cx0, lo(cz1), cz1], [cx1, lo(cz1), cz1], [cx1, hi(cz1), cz1], [cx0, hi(cz1), cz1]], 'vinyl', { n: [0, 0, 1], dens: 3 });
+  for (const [x, s] of [[cx0, -1], [cx1, 1]]) b.poly([[x, lo(cz0), cz0], [x, lo(cz1), cz1], [x, hi(cz1), cz1], [x, hi(cz0), cz0]], 'vinyl', { n: [s, 0, 0], dens: 3 });
+  const yg = z => top(z) + 0.25, k = (yg(gz1) - yg(gz0)) / (gz1 - gz0), gn = [0, -1, k], l = Math.hypot(...gn);
+  glass.push({ pts: [[gx0, yg(gz0), gz0], [gx1, yg(gz0), gz0], [gx1, yg(gz1), gz1], [gx0, yg(gz1), gz1]], n: gn.map(v => v / l) });
 }
 function rectMinus([x0, x1, z0, z1], holes) {
   let rects = [[x0, x1, z0, z1]];
@@ -1018,10 +1050,17 @@ function fixtures(b, lamps) {
       b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', x, y - 0.034, z, 0, { bake: false });
       lamps.push({ x, y: y - 0.06, z, r: 0.22, kind: 'down', I: f.I || 5.5 });
     } else if (f.kind === 'wellcan') {
-      // can in the skylight well's south face (z = face), facing north
-      b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, x, y, z - 0.015, 0, { rx: Math.PI / 2 });
-      b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', x, y, z - 0.034, 0, { rx: Math.PI / 2, bake: false });
-      lamps.push({ x, y, z: z - 0.2, r: 0.2, kind: 'omni', I: 4 });
+      // can in a skylight shaft's south face, `up` of the way up it, facing along the face normal (north,
+      // and down where the shaft leans toward the back)
+      const sk = L.SKYLIGHTS[f.sky], { bot, top: tp } = sk.lean ? skylightShaft(sk).south
+        : { bot: [(sk.r[0] + sk.r[1]) / 2, L.MAIN_CEIL, sk.r[3]], top: [(sk.r[0] + sk.r[1]) / 2, L.MAIN_CEIL + 3, sk.r[3]] };
+      const v = [0, tp[1] - bot[1], tp[2] - bot[2]], l = Math.hypot(...v), n = [0, v[2] / l, -v[1] / l];
+      const P = d => [bot[0] + v[0] * f.up + n[0] * d, bot[1] + v[1] * f.up + n[1] * d, bot[2] + v[2] * f.up + n[2] * d];
+      const rx = Math.atan2(n[2], n[1]);                                  // turns the cylinder's axis (y) onto n
+      b.prim(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 24), TRIM, ...P(0.015), 0, { rx });
+      b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.01, 24), 'lampGlow', ...P(0.034), 0, { rx, bake: false });
+      const q = P(0.2);
+      lamps.push({ x: q[0], y: q[1], z: q[2], r: 0.2, kind: 'omni', I: 4 });
     } else if (f.kind === 'fan') {
       // bath exhaust fan: white grille with dark louvre slots, no light
       b.mbox(x - 0.45, x + 0.45, y - 0.04, y, z - 0.35, z + 0.35, 'plate');
@@ -2288,7 +2327,7 @@ export function roofUnder(x, z) {
 }
 
 function exterior(b) {
-  const holes = L.SKYLIGHTS.map(([a0, a1, c0, c1]) => [a0 - 0.2, a1 + 0.2, c0 - 0.2, c1 + 0.2]);
+  const holes = L.SKYLIGHTS.map(sk => (sk.lean ? skylightShaft(sk).glass : sk.r)).map(([a0, a1, c0, c1]) => [a0 - 0.2, a1 + 0.2, c0 - 0.2, c1 + 0.2]);
   for (const p of ROOF_PLANES) {
     const hs = holes.filter(([a0, a1, c0, c1]) => a0 >= p.x[0] && a1 <= p.x[1] && c0 >= p.z[0] && c1 <= p.z[1]);
     for (const [a0, a1, c0, c1] of rectMinus([p.x[0], p.x[1], p.z[0], p.z[1]], hs)) {
