@@ -51,7 +51,7 @@ const DEFS = {
   tvBody: { color: '#141414', roughness: 0.4 },
   ceramic: { color: '#e9e3d6', roughness: 0.3 },
   curtain: { color: '#8f949a', roughness: 0.9, side: 'double' },
-  pegboard: { color: '#c9a77d', roughness: 0.9 },
+  pegboard: { color: '#ffffff', roughness: 0.7, procedural: 'pegboard', repeat: 1, albedo: [0.7, 0.7, 0.68] },   // white, 1" holes
   garageDoor: { color: '#efeee9', roughness: 0.5 },
   grass: { color: '#6d8a47', roughness: 1, procedural: 'grass', repeat: 12 },
   asphalt: { color: '#4d4e50', roughness: 0.95 },
@@ -200,6 +200,11 @@ function proceduralTexture(kind) {
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
     cache.set(kind, t);
     return t;
+  } else if (kind === 'pegboard') {
+    // white hardboard with holes on a 1" grid (one tile = 1 ft)
+    g.fillStyle = '#f1f0ec'; g.fillRect(0, 0, 512, 512);
+    g.fillStyle = '#6d6a64';
+    for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) { g.beginPath(); g.arc((i + 0.5) * 512 / 12, (j + 0.5) * 512 / 12, 4, 0, Math.PI * 2); g.fill(); }
   } else if (kind === 'brocade') {
     // bronze-brown brocade: muted gold paisley swirls in offset rows (tiles seamlessly)
     g.fillStyle = '#5c3b24'; g.fillRect(0, 0, 512, 512);

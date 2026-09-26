@@ -38,6 +38,8 @@ const POSES = {
   stair_closet_west: [28.0, 23.4, 0, 1.5708, -0.6],
   stair_closet_back: [26.6, 28.2, 0, 0, 0.15],
   garage: [8, 20, 0, 0.6, 0.1],
+  garage_bench: [7.5, 9.2, 0, 0.35, 0.05],
+  garage_door: [12.5, 17.5, 0, -1.5708, 0.05],
 };
 
 async function loadChromium() {

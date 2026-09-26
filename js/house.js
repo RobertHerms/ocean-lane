@@ -1706,20 +1706,106 @@ const FURN = {
     b.prim(new THREE.CylinderGeometry(0.95, 0.95, 5.0, 28), 'paint:#e4e2dd', x, F + 2.5, z, 0, { collide: true });
     b.prim(new THREE.CylinderGeometry(0.12, 0.12, 3.0, 10), 'galvanized', x, F + 6.5, z);
   },
-  shelving(b, f) {
-    const [x0, x1, z0, z1] = f.r, F = f.base;
-    for (const y of [0.3, 1.8, 3.3, 4.8, 6.3]) b.box(x0, x1, F + y, F + y + 0.06, z0, z1, 'galvanized', { dens: 3 });
-    for (const [px, pz] of [[x0, z0], [x1 - 0.1, z0], [x0, z1 - 0.1], [x1 - 0.1, z1 - 0.1]]) b.mbox(px, px + 0.1, F, F + 6.6, pz, pz + 0.1, 'galvanized');
-    b.collider(x0, x1, F, F + 6.6, z0, z1);
+  // Garage workshop corner (r = the L's extent): a plywood-topped bench on a 2x4 frame along the north wall
+  // with a return along the west wall, a white pegboard behind it with a narrow shelf and hanging tools, two
+  // wall shelves on standards above, an overhead platform shelf on chains, an office chair; a boxed soffit
+  // across the ceiling and a round duct along the west wall that turns down.
+  workshop(b, f) {
+    const [x0, x1, z0, z1] = f.r, F = f.base, D = 2.3, H = 2.9, C = L.LOW_CEIL, WZ = 0.25, WX = 0.25;
+    const PLY = 'stain:#c6a574', LUM = 'stain:#d5b27d', WHITE = 'paint:#f2f1ec';
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const STUFF = ['paint:#a57b4f', 'paint:#b38a5c', 'paint:#3c4a5a', 'paint:#d8d4c8', 'paint:#2b2b2b', 'paint:#8c6a45'];
+    const boxesOn = (xa, xb, za, zb, y, maxH) => {                     // generic boxes and bins along a shelf
+      for (let x = xa + 0.1; x < xb - 0.5;) {
+        const w = Math.min(0.55 + rnd() * 0.9, xb - 0.05 - x), d = Math.min(zb - za - 0.1, 0.6 + rnd() * 0.6), h = Math.min(maxH, 0.35 + rnd() * 0.45);
+        b.mbox(x, x + w, y, y + h, za + 0.05, za + 0.05 + d, STUFF[(rnd() * STUFF.length) | 0]);
+        x += w + 0.08 + rnd() * 0.35;
+      }
+    };
+    // bench: long run (x0..x1 along the north wall) and return (along the west wall)
+    const runs = [[x0, x1, z0, z0 + D], [x0, x0 + D, z0 + D, z1]];
+    for (const [bx0, bx1, bz0, bz1] of runs) {
+      b.box(bx0, bx1, F + H - 0.06, F + H, bz0, bz1, PLY, { collide: true, dens: 5 });
+      b.box(bx0 + 0.05, bx1 - 0.05, F + 0.5, F + 0.55, bz0 + 0.05, bz1 - 0.05, PLY, { dens: 4 });       // lower shelf
+    }
+    b.box(x0 + D, x1, F + H - 0.35, F + H - 0.06, z0 + D - 0.13, z0 + D, LUM, { skip: ['py'], dens: 5 });   // front rails
+    b.box(x0 + D - 0.13, x0 + D, F + H - 0.35, F + H - 0.06, z0 + D, z1, LUM, { skip: ['py'], dens: 5 });
+    const legs = [[x1 - 0.2, z0 + D - 0.3], [x0 + D + 3.4, z0 + D - 0.3], [x1 - 0.2, z0 + 0.05], [x0 + D + 3.4, z0 + 0.05],
+      [x0 + D - 0.3, z1 - 0.2], [x0 + 0.05, z1 - 0.2], [x0 + D - 0.3, z0 + D - 0.3], [x0 + 0.05, z0 + 0.05]];
+    for (const [lx, lz] of legs) b.mbox(lx, lx + 0.13, F, F + H - 0.06, lz, lz + 0.29, LUM);
+    // pegboard 4 ft tall behind the whole bench, narrow shelf along its top, generic hanging tools
+    const pb0 = F + 3.1, pb1 = pb0 + 4;
+    b.box(WX + 0.04, x1, pb0, pb1, WZ, WZ + 0.04, 'pegboard', { skip: ['nz'], dens: 4 });
+    b.box(WX, WX + 0.04, pb0, pb1, WZ, z1, 'pegboard', { skip: ['nx'], dens: 4 });
+    b.box(WX + 0.04, x1, pb1, pb1 + 0.06, WZ, WZ + 0.45, WHITE, { skip: ['nz'], dens: 5 });
+    b.box(WX, WX + 0.45, pb1, pb1 + 0.06, WZ + 0.45, z1, WHITE, { skip: ['nx'], dens: 5 });
+    for (let i = 0; i < 11; i++) {
+      const tx = x0 + 0.7 + i * 0.85, ty = pb0 + 1.2 + (i % 3) * 0.7, zf = WZ + 0.04;
+      if (i % 3 === 0) { b.mbox(tx - 0.03, tx + 0.03, ty - 0.45, ty + 0.1, zf, zf + 0.06, 'tvBody'); b.mbox(tx - 0.14, tx + 0.14, ty + 0.1, ty + 0.2, zf, zf + 0.08, 'tvBody'); }
+      else if (i % 3 === 1) { b.mbox(tx - 0.16, tx + 0.16, ty - 0.2, ty + 0.1, zf, zf + 0.22, 'paint:#d9a92a'); b.mbox(tx - 0.05, tx + 0.05, ty - 0.55, ty - 0.2, zf, zf + 0.12, 'tvBody'); }
+      else b.mbox(tx - 0.025, tx + 0.025, ty - 0.5, ty + 0.3, zf, zf + 0.03, 'tvBody');
+    }
+    // two wall shelves on white standards and brackets above the pegboard, with boxes and bins
+    for (const sx of [x0 + 0.6, x0 + 3.6, x0 + 6.6, x1 - 0.5]) {
+      b.mbox(sx - 0.03, sx + 0.03, pb1 + 0.2, C - 0.15, WZ, WZ + 0.04, 'plate');
+      for (const y of [7.9, 8.75]) b.mbox(sx - 0.015, sx + 0.015, F + y - 0.3, F + y, WZ + 0.04, WZ + 0.9, 'plate');
+    }
+    for (const [y, mh] of [[7.9, 0.7], [8.75, 0.6]]) {
+      b.box(x0 + 0.1, x1 - 0.1, F + y, F + y + 0.06, WZ, WZ + 1.0, WHITE, { skip: ['nz'], dens: 5 });
+      boxesOn(x0 + 0.1, x1 - 0.1, WZ, WZ + 1.0, F + y + 0.06, mh);
+    }
+    // overhead platform shelf: 2x4 frame, OSB deck about 2 ft below the ceiling, hung on chains, boxes on it
+    const px0 = x0 + 0.7, px1 = x1, pz0 = WZ + 1.2, pz1 = pz0 + 2.4, dy = C - 2;
+    b.box(px0, px1, dy, dy + 0.06, pz0, pz1, 'paint:#b48f5a', { dens: 4 });
+    for (const zz of [pz0, pz1 - 0.13]) b.box(px0, px1, dy - 0.29, dy, zz, zz + 0.13, LUM, { skip: ['py'], dens: 4 });
+    for (let xx = px0; xx < px1; xx += 2) b.mbox(xx, xx + 0.13, dy - 0.29, dy, pz0 + 0.13, pz1 - 0.13, LUM);
+    for (const xx of [px0 + 0.2, (px0 + px1) / 2, px1 - 0.2]) for (const zz of [pz0 + 0.07, pz1 - 0.07]) {
+      b.prim(new THREE.CylinderGeometry(0.018, 0.018, C - dy - 0.06, 6), 'galvanized', xx, (C + dy + 0.06) / 2, zz);
+    }
+    boxesOn(px0, px1, pz0, pz1, dy + 0.06, 1.0);
+    officeChair(b, x0 + 5.3, z0 + D + 1.1, F);
+    // boxed soffit across the ceiling; a 6" round duct along the west wall under the ceiling, turning down
+    b.box(WX, 18.1, C - 0.8, C, 8.4, 9.6, 'paint:' + L.PAINT.garage, { skip: ['py', 'nx', 'px'] });
+    const dx = WX + 0.36, dyc = C - 0.35, zt = z0 + 1.3;
+    const duct = new THREE.CurvePath();
+    duct.add(new THREE.LineCurve3(V3(dx, dyc, 8.4), V3(dx, dyc, zt + 0.5)));
+    duct.add(new THREE.QuadraticBezierCurve3(V3(dx, dyc, zt + 0.5), V3(dx, dyc, zt), V3(dx, dyc - 0.5, zt)));
+    duct.add(new THREE.LineCurve3(V3(dx, dyc - 0.5, zt), V3(dx, pb1 + 0.3, zt)));
+    b.mesh(new THREE.TubeGeometry(duct, 40, 0.25, 16), 'galvanized');
+    b.prim(new THREE.CylinderGeometry(0.25, 0.25, 0.02, 16), 'galvanized', dx, pb1 + 0.3, zt);
+    for (const zz of [7.4, 5.4, 3.4]) b.mbox(WX, dx, dyc + 0.2, dyc + 0.26, zz - 0.04, zz + 0.04, 'galvanized');   // straps
   },
-  workbench(b, f) {
+  // grey steel two-door storage cabinet, doors facing west (x0)
+  steelCabinet(b, f) {
+    const [x0, x1, z0, z1] = f.r, F = f.base, H = f.h, zm = (z0 + z1) / 2;
+    b.box(x0, x1, F, F + H, z0, z1, 'paint:#8f9398', { skip: ['px', 'ny'], collide: true, bevel: 0.02 });
+    b.mbox(x0 - 0.005, x0 + 0.002, F + 0.15, F + H - 0.15, zm - 0.008, zm + 0.008, 'paint:#2b2d30');
+    for (const dz of [-0.12, 0.12]) b.mbox(x0 - 0.06, x0, F + 3.1, F + 3.7, zm + dz - 0.015, zm + dz + 0.015, 'nickel');
+    for (const zc of [(z0 + zm) / 2, (zm + z1) / 2]) for (const y of [F + 0.5, F + 0.6, F + 0.7, F + H - 0.7, F + H - 0.6, F + H - 0.5]) {
+      b.mbox(x0 - 0.004, x0 + 0.002, y - 0.012, y + 0.012, zc - 0.35, zc + 0.35, 'paint:#3c3f43');   // louvres
+    }
+  },
+  // plank shelf on white brackets against the wall on the x1 side, board top at base + y
+  plankShelf(b, f) {
+    const [x0, x1, z0, z1] = f.r, F = f.base, y = F + f.y;
+    b.box(x0, x1, y, y + 0.08, z0, z1, 'stain:#b58e5c', { skip: ['px'], dens: 5 });
+    for (let z = z0 + 0.4; z < z1; z += 2.4) {
+      b.mbox(x1 - 0.04, x1, y - 0.8, y, z - 0.02, z + 0.02, 'plate');
+      b.mbox(x0 + 0.1, x1, y - 0.06, y, z - 0.02, z + 0.02, 'plate');
+    }
+    for (const [za, w, h, m] of [[z0 + 0.3, 1.1, 0.6, 'paint:#a57b4f'], [z0 + 1.6, 0.8, 0.45, 'paint:#3c4a5a'], [z0 + 3.2, 1.2, 0.7, 'paint:#b38a5c']]) b.mbox(x0 + 0.1, x1 - 0.1, y + 0.08, y + 0.08 + h, za, za + w, m);
+  },
+  doorMat(b, f) {
     const [x0, x1, z0, z1] = f.r, F = f.base;
-    b.box(x0, x1, F + 2.9, F + 3.05, z0, z1, 'stain:#a07c52', { collide: true });
-    b.box(x0, x1, F + 0.5, F + 0.56, z0 + 0.1, z1 - 0.1, 'stain:#a07c52');
-    for (const [px, pz] of [[x0, z0], [x1 - 0.2, z0], [x0, z1 - 0.2], [x1 - 0.2, z1 - 0.2]]) b.mbox(px, px + 0.2, F, F + 2.9, pz, pz + 0.2, 'stain:#a07c52');
-    b.box(x0, x1, F + 3.05, F + 5.2, z0 - 0.02, z0 + 0.04, 'pegboard', { dens: 4 });
+    b.box(x0, x1, F, F + 0.03, z0, z1, 'fabric:#3b3733', { skip: ['ny'], dens: 4 });
   },
   fridge(b, f) {
+    if (f.face === 'w') {
+      // built facing south in a frame turned so the front faces west (back to the wall on the east)
+      const [x0, x1, z0, z1] = f.r, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, hx = (x1 - x0) / 2, hz = (z1 - z0) / 2;
+      return rotated(b, cx, cz, -Math.PI / 2, sub => FURN.fridge(sub, { ...f, face: 's', r: [cx - hz, cx + hz, cz - hx, cz + hx] }));
+    }
     const [x0, x1, z0, z1] = f.r, F = f.base;
     b.box(x0, x1, F, F + 5.6, z0, z1, 'enamelWhite', { skip: ['ny'], collide: true });
     b.box(x0 + 0.02, x1 - 0.02, F + 3.9, F + 3.93, z1, z1 + 0.01, 'paint:#bdbbb6');

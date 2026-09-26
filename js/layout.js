@@ -386,10 +386,13 @@ export const FURNITURE = [
   // Utility
   { type: 'furnace', r: [26.0, 28.4, 10.0, 13.6], base: LOW },
   { type: 'waterHeater', x: 26.9, z: 6.75, base: LOW },
-  // Garage (tidy)
-  { type: 'shelving', r: [0.3, 1.9, 2.0, 12.5], base: LOW },
-  { type: 'workbench', r: [2.5, 12.5, 0.3, 2.3], base: LOW },
-  { type: 'fridge', r: [15.6, 18.1, 11.3, 14.0], base: LOW, face: 's' },
+  // Garage: a workshop corner (L-shaped bench along the north and west walls); by the house door a top-freezer
+  // fridge with its back to the door's wall, a steel cabinet, a plank shelf over both and a door mat
+  { type: 'workshop', r: [0.3, 10.3, 0.3, 5.3], base: LOW },
+  { type: 'fridge', r: [18.25, 20.55, 17.85, 20.35], base: LOW, face: 'w' },
+  { type: 'steelCabinet', r: [19.05, 20.55, 20.45, 23.45], base: LOW, h: 6 },
+  { type: 'plankShelf', r: [19.55, 20.6, 17.85, 23.45], base: LOW, y: 7 },
+  { type: 'doorMat', r: [18.9, 20.5, 15.0, 17.2], base: LOW },
 ];
 
 // ------------------------------------------------------------- wall art ----
