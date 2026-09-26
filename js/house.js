@@ -946,9 +946,9 @@ function stairs(b) {
       const front = upAtZ1 ? 'nz' : 'pz', back = upAtZ1 ? 'pz' : 'nz';
       if (f.finish === 'carpet') {
         // waterfall carpet: one block per step, its front a single carpet face from the step below up to its
-        // tread and the tread from the riser line back (no overhang); a small bevel softens the nose. The
+        // tread and the tread from the riser line back (no overhang). The
         // back, the underside and the ends (in the walls / knee wall) are hidden.
-        b.box(x0, x1, base, top, Math.min(za, zb), Math.max(za, zb), treadMat, { skip: ['ny', back, 'nx', 'px'], dens: 7, bevel: 0.03 });
+        b.box(x0, x1, base, top, Math.min(za, zb), Math.max(za, zb), treadMat, { skip: ['ny', back, 'nx', 'px'], dens: 7 });   // no bevel: a bevel strip is too thin for its own lightmap and bakes black
         continue;
       }
       // the bottom steps of a stoop flare out (f.flare: extra width [west, east] from the bottom step up)
