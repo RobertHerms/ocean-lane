@@ -8,7 +8,7 @@ const DEFS = {
   wood: { map: 'wood_floor.jpg', normalMap: 'wood_floor_normal.jpg', roughnessMap: 'wood_floor_rough.jpg', repeat: 6, roughness: 1, normalScale: 0.6 },
   tileMarble: { map: 'tile_marble.jpg', normalMap: 'tile_marble_normal.jpg', roughnessMap: 'tile_marble_rough.jpg', repeat: 4, roughness: 0.9 },
   tileWall: { map: 'tile_marble.jpg', normalMap: 'tile_marble_normal.jpg', roughnessMap: 'tile_marble_rough.jpg', repeat: 4, roughness: 0.6 },
-  tileKitchen: { map: 'tile_kitchen.jpg', normalMap: 'tile_kitchen_normal.jpg', roughnessMap: 'tile_kitchen_rough.jpg', repeat: 4, roughness: 0.9 },
+  tileKitchen: { map: 'tile_kitchen.jpg', normalMap: 'tile_kitchen_normal.jpg', roughnessMap: 'tile_kitchen_rough.jpg', repeat: 4, roughness: 0.35 },   // glazed off-white (tools/make_tile_kitchen.py)
   tileGrey: { map: 'tile_kitchen.jpg', normalMap: 'tile_kitchen_normal.jpg', roughnessMap: 'tile_kitchen_rough.jpg', repeat: 4, roughness: 0.9, color: '#c3c6ca' },   // stair closet porcelain
   tileLanding: { map: 'tile_landing.jpg', normalMap: 'tile_landing_normal.jpg', roughnessMap: 'tile_landing_rough.jpg', repeat: 3, roughness: 1 },   // (unused now)
   tileEntry: { map: 'tile_entry.jpg', normalMap: 'tile_entry_normal.jpg', repeat: 3, roughness: 0.6 },   // entry landing: 18" greige porcelain (tools/make_tile_entry.py)
