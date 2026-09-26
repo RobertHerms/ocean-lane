@@ -58,9 +58,15 @@ const DEFS = {
   pegboard: { color: '#ffffff', roughness: 0.7, procedural: 'pegboard', repeat: 1, albedo: [0.7, 0.7, 0.68] },   // white, 1" holes
   garageDoor: { color: '#efeee9', roughness: 0.5 },
   grass: { color: '#6d8a47', roughness: 1, procedural: 'grass', repeat: 12 },
-  asphalt: { color: '#4d4e50', roughness: 0.95 },
-  roof: { color: '#ffffff', roughness: 0.9, procedural: 'shingles', repeat: 6, albedo: [0.07, 0.07, 0.075] },
-  siding: { color: '#ffffff', roughness: 0.7, procedural: 'siding', repeat: 4, albedo: [0.62, 0.58, 0.5] },
+  asphalt: { color: '#ffffff', roughness: 0.95, procedural: 'asphalt', repeat: 4, albedo: [0.06, 0.06, 0.065] },
+  roof: { color: '#ffffff', roughness: 0.9, procedural: 'shingles', repeat: 5, albedo: [0.25, 0.13, 0.075] },   // brown-tan architectural shingles
+  siding: { color: '#ffffff', roughness: 0.7, procedural: 'shakes', repeat: 3.5, albedo: [0.63, 0.57, 0.45] },   // cream vinyl shakes, 7" courses
+  ledgestone: { color: '#ffffff', roughness: 0.95, procedural: 'ledgestone', repeat: 3, albedo: [0.27, 0.19, 0.12] },   // stacked stone veneer
+  bluestone: { map: 'concrete.jpg', repeat: 3, roughness: 0.8, color: '#9aa5ae' },   // stoop treads, planter cap
+  stoneCap: { map: 'concrete.jpg', repeat: 3, roughness: 0.85, color: '#e2ddd2' },    // ledge where the stone stops
+  pavers: { color: '#ffffff', roughness: 0.9, procedural: 'pavers', repeat: 2, albedo: [0.24, 0.23, 0.22] },   // driveway soldier course
+  sidewalk: { color: '#ffffff', roughness: 0.9, procedural: 'sidewalk', repeat: 5, albedo: [0.56, 0.54, 0.5] },   // scored concrete
+  mulch: { color: '#4a3526', roughness: 1 },
   soffit: { color: '#f2f0ea', roughness: 0.6 },
   plate: { color: '#f3f1ea', roughness: 0.35 },
   // light-emitting / translucent parts (not baked; glow at runtime)
@@ -115,19 +121,77 @@ function proceduralTexture(kind) {
     g.fillStyle = '#6d8a47'; g.fillRect(0, 0, 512, 512);
     const cols = ['#5d7a3b', '#7e9b55', '#688540', '#86a35c', '#56722f'];
     for (let i = 0; i < 60000; i++) { g.fillStyle = cols[(rnd() * cols.length) | 0]; g.globalAlpha = 0.5; g.fillRect(rnd() * 512, rnd() * 512, 1.5, 3); }
-  } else if (kind === 'siding') {
-    // 4' tile: seven 7" vinyl laps with a shadow line under each
-    g.fillStyle = '#ddd5c5'; g.fillRect(0, 0, 512, 512);
-    const lap = 512 / 7;
-    for (let i = 0; i < 7; i++) {
-      const y = i * lap;
-      const grd = g.createLinearGradient(0, y, 0, y + lap);
-      grd.addColorStop(0, '#cfc6b5'); grd.addColorStop(0.12, '#e4ddcf'); grd.addColorStop(1, '#d8d0c0');
-      g.fillStyle = grd; g.fillRect(0, y, 512, lap);
-      g.fillStyle = 'rgba(60,50,40,0.35)'; g.fillRect(0, y, 512, 2);
+  } else if (kind === 'shakes') {
+    // 3.5' tile: six 7" courses of cedar-impression vinyl shakes in straight courses, 4-12" wide, with dark
+    // keyways between them, grain down each one and the shadow of the butt above along each course's top
+    g.fillStyle = '#d8cfbb'; g.fillRect(0, 0, 512, 512);
+    const course = 512 / 6, inch = 512 / 42;
+    for (let r = 0; r < 6; r++) {
+      const y = r * course, ws = [];
+      for (let acc = 0; acc < 512 - 4 * inch;) { const w = Math.min((4 + rnd() * 8) * inch, 512 - acc); ws.push(w); acc += w; }
+      ws[ws.length - 1] += 512 - ws.reduce((a, v) => a + v, 0);
+      let x = rnd() * 512;
+      for (const w of ws) {
+        const v = (rnd() - 0.5) * 16;
+        for (const ox of [x, x - 512]) {
+          g.fillStyle = `rgb(${216 + v | 0},${207 + v | 0},${187 + v * 0.9 | 0})`; g.fillRect(ox, y, w, course);
+          g.globalAlpha = 0.18;
+          for (let k = 0; k < w / 3; k++) { g.fillStyle = rnd() < 0.5 ? '#b9ae96' : '#ece6d8'; g.fillRect(ox + rnd() * w, y + rnd() * 10, 1, course * (0.5 + rnd() * 0.5)); }
+          g.globalAlpha = 1;
+          g.fillStyle = 'rgba(70,58,42,0.55)'; g.fillRect(ox, y, 2, course);          // keyway
+        }
+        x = (x + w) % 512;
+      }
+      const sh = g.createLinearGradient(0, y, 0, y + 9);
+      sh.addColorStop(0, 'rgba(60,48,34,0.55)'); sh.addColorStop(1, 'rgba(60,48,34,0)');
+      g.fillStyle = sh; g.fillRect(0, y, 512, 9);
     }
-    g.globalAlpha = 0.05;
-    for (let i = 0; i < 4000; i++) { g.fillStyle = rnd() < 0.5 ? '#fff' : '#9a917f'; g.fillRect(rnd() * 512, rnd() * 512, 8 + rnd() * 30, 1); }
+  } else if (kind === 'ledgestone') {
+    // 3' tile: stacked ledgestone, horizontal rectangular stones 1.5-4" tall and 6-24" long in mixed browns,
+    // tans, rust and grey, dry-laid with deep dark joints
+    g.fillStyle = '#3a322b'; g.fillRect(0, 0, 512, 512);
+    const inch = 512 / 36, cols = ['#8a7560', '#9c8468', '#b09a7c', '#a28f76', '#c3ae8f', '#7d6b58', '#8f7f6f', '#7b736a', '#8e867b', '#a69c8e', '#8c6a52', '#6f5a47', '#b7a489', '#5f5247', '#bfb2a0', '#968a7c'];
+    const hs = [];
+    for (let acc = 0; acc < 512 - 1.5 * inch;) { const h = Math.min((1.5 + rnd() * 2.5) * inch, 512 - acc); hs.push(h); acc += h; }
+    hs[hs.length - 1] += 512 - hs.reduce((a, v) => a + v, 0);
+    let y = 0;
+    for (const h of hs) {
+      let x = rnd() * 512, left = 512;
+      while (left > 1) {
+        const w = Math.min(left, (8 + rnd() * 22) * inch);
+        const col = cols[(rnd() * cols.length) | 0];
+        for (const ox of [x, x - 512]) {
+          g.fillStyle = col; g.fillRect(ox + 1.5, y + 1.5, w - 3, h - 3);
+          g.fillStyle = 'rgba(255,245,225,0.18)'; g.fillRect(ox + 1.5, y + 1.5, w - 3, 2);        // lit top edge
+          g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(ox + 1.5, y + h - 3.5, w - 3, 2);         // shaded underside
+          g.globalAlpha = 0.25;
+          for (let k = 0; k < w * h / 60; k++) { g.fillStyle = rnd() < 0.5 ? '#2e241c' : '#e8dcc6'; g.fillRect(ox + 2 + rnd() * (w - 4), y + 2 + rnd() * (h - 4), 1 + rnd() * 3, 1); }
+          g.globalAlpha = 1;
+        }
+        x = (x + w) % 512; left -= w;
+      }
+      y += h;
+    }
+  } else if (kind === 'pavers') {
+    // 2' tile: grey concrete pavers 4" x 8" (a soldier course is one 8" row, laid across the border)
+    g.fillStyle = '#5b5955'; g.fillRect(0, 0, 512, 512);
+    const cw = 512 / 6, rh = 512 / 3, cols = ['#8e8c88', '#7f7d79', '#9a9793', '#85837e', '#76746f'];
+    for (let r = 0; r < 3; r++) for (let k = 0; k < 6; k++) {
+      g.fillStyle = cols[(rnd() * cols.length) | 0]; g.fillRect(k * cw + 2, r * rh + 2, cw - 4, rh - 4);
+      g.globalAlpha = 0.2;
+      for (let i = 0; i < 300; i++) { g.fillStyle = rnd() < 0.5 ? '#4a4845' : '#b3b0aa'; g.fillRect(k * cw + 3 + rnd() * (cw - 6), r * rh + 3 + rnd() * (rh - 6), 2, 2); }
+      g.globalAlpha = 1;
+    }
+  } else if (kind === 'asphalt') {
+    // 4' tile: dark asphalt with light and dark aggregate
+    g.fillStyle = '#434447'; g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 40000; i++) { g.fillStyle = ['#56575a', '#333436', '#67686b', '#3c3d40'][(rnd() * 4) | 0]; g.globalAlpha = 0.6; g.fillRect(rnd() * 512, rnd() * 512, 1 + rnd() * 2, 1 + rnd() * 2); }
+  } else if (kind === 'sidewalk') {
+    // 5' tile: broom-finished concrete, one scored joint across the walk (along v) per tile
+    g.fillStyle = '#cbc8c0'; g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 30; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(90,85,75,0.05)'; g.beginPath(); g.arc(rnd() * 512, rnd() * 512, 30 + rnd() * 90, 0, 7); g.fill(); }
+    for (let i = 0; i < 25000; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.12)' : 'rgba(80,76,68,0.12)'; g.fillRect(rnd() * 512, rnd() * 512, 3, 1); }
+    g.fillStyle = 'rgba(70,66,60,0.75)'; g.fillRect(0, 0, 3, 512);
   } else if (kind.startsWith('art:')) {
     const t = new THREE.CanvasTexture(drawArt(c, g, kind.slice(4), rnd));
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
@@ -261,22 +325,24 @@ function proceduralTexture(kind) {
       for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) paisley(cx + ox, cy + oy, rot, 0.95);
     }
   } else if (kind === 'shingles') {
-    // architectural asphalt shingles, 5" exposure
-    g.fillStyle = '#39383a'; g.fillRect(0, 0, 512, 512);
-    const row = 512 / 14.4;
-    for (let r = 0; r < 15; r++) {
-      let x = -rnd() * 60;
-      while (x < 512) {
-        const w = 25 + rnd() * 45;
-        const v = 40 + rnd() * 30 | 0;
-        g.fillStyle = `rgb(${v},${v - 2},${v + 2})`;
-        g.fillRect(x, r * row, w - 2, row - 3);
-        x += w;
+    // 5' tile: brown-tan architectural asphalt shingles, twelve 5" courses of random-width laminated tabs
+    // (some darker shadow tabs) with a dark shadow line under each course
+    g.fillStyle = '#6e4d3a'; g.fillRect(0, 0, 512, 512);
+    const row = 512 / 12;
+    for (let r = 0; r < 12; r++) {
+      let x = rnd() * 512, left = 512;
+      while (left > 1) {
+        const w = Math.min(left, 25 + rnd() * 45), dark = rnd() < 0.22, v = (rnd() - 0.5) * 22 - (dark ? 34 : 0);
+        for (const ox of [x, x - 512]) {
+          g.fillStyle = `rgb(${154 + v | 0},${112 + v * 0.8 | 0},${88 + v * 0.7 | 0})`;
+          g.fillRect(ox, r * row, w - 2, row - 4);
+        }
+        x = (x + w) % 512; left -= w;
       }
-      g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, r * row + row - 3, 512, 3);
+      g.fillStyle = 'rgba(28,16,8,0.7)'; g.fillRect(0, r * row + row - 4, 512, 4);
     }
     g.globalAlpha = 0.25;
-    for (let i = 0; i < 30000; i++) { g.fillStyle = rnd() < 0.5 ? '#6b6a6c' : '#1e1d1f'; g.fillRect(rnd() * 512, rnd() * 512, 1.5, 1.5); }
+    for (let i = 0; i < 30000; i++) { g.fillStyle = rnd() < 0.5 ? '#c49a7c' : '#3e2a1e'; g.fillRect(rnd() * 512, rnd() * 512, 1.5, 1.5); }
   }
   g.globalAlpha = 1;
   const t = new THREE.CanvasTexture(c);

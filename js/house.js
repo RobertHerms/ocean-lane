@@ -22,6 +22,13 @@ function paintFor(r, y) {
   if (r.lower && y < r.h[0] + r.rail) return 'paint:' + r.lower;
   return 'paint:' + r.paint;
 }
+// Outside finish at a point on an exterior face (n: its outward normal): stacked ledgestone all round the
+// projecting entry bay (full height) and on the front of the lower storey, cream shakes everywhere else
+function extFinish(x, z, y, n) {
+  if (x > 20.5 && x < 29.1 && z > 27.6 && z < 35.4) return 'ledgestone';
+  if (n[2] > 0.5 && z > 27.5 && y < L.MAIN - 0.1) return 'ledgestone';
+  return 'siding';
+}
 
 export function buildHouse() {
   const b = new Builder();
@@ -108,9 +115,9 @@ function walls(b, glass, sliders) {
         const ym = (s + Math.min(ep, eq)) / 2;
         for (const side of [-1, 1]) {
           if (nichesHere.some(op => op.side === side && s >= op.b0 - 1e-6 && e0 <= op.b1 + 1e-6)) continue;
-          const probe = wp(alongX, c, mid, side * (t / 2 + 0.25), ym);
+          const probe = wp(alongX, c, mid, side * (t / 2 + 0.25), ym), fp = wp(alongX, c, mid, side * t / 2, ym);
           const r = roomAt(probe[0], probe[2], ym);
-          const mat = paintFor(r, ym);
+          const mat = r ? paintFor(r, ym) : extFinish(fp[0], fp[2], ym, wn(alongX, side));
           const o = side * t / 2;
           b.poly([wp(alongX, c, pp, o, s), wp(alongX, c, qq, o, s), wp(alongX, c, qq, o, eq), wp(alongX, c, pp, o, ep)], mat,
             { n: wn(alongX, side), dens: r ? undefined : 1.2, chart: r ? `wall${wi}:${side}:${s < L.MAIN - 0.2 ? 'lo' : 'hi'}` : undefined });
@@ -124,7 +131,8 @@ function walls(b, glass, sliders) {
         const ends = [[pp, -1, opEdges.has(p) ? jambMat(p) : null, p === a0 && !(jp && jp.t >= t - 1e-6)], [qq, 1, opEdges.has(q) ? jambMat(q) : null, q === a1 && !(jq && jq.t >= t - 1e-6)]];
         for (const [a, dir, jm, isWallEnd] of ends) {
           if (!jm && !isWallEnd) continue;
-          const mat = jm || paintFor(roomAt(...xz(wp(alongX, c, a + dir * 0.3, 0, 0)), ym), ym);
+          const er = roomAt(...xz(wp(alongX, c, a + dir * 0.3, 0, 0)), ym), ep0 = wp(alongX, c, a, 0, ym);
+          const mat = jm || (er ? paintFor(er, ym) : extFinish(ep0[0], ep0[2], ym, alongX ? [dir, 0, 0] : [0, 0, dir]));
           const ea = dir < 0 ? ep : eq;
           b.poly([wp(alongX, c, a, -t / 2, s), wp(alongX, c, a, t / 2, s), wp(alongX, c, a, t / 2, ea), wp(alongX, c, a, -t / 2, ea)], mat,
             { n: alongX ? [dir, 0, 0] : [0, 0, dir] });
@@ -591,8 +599,8 @@ function floorsAndCeilings(b, glass) {
   // solids: no top face where a floor at that height already covers it (the carpeted MID landings, the pantry
   // floor): the paint would be coplanar with the floor and z-fight with it
   for (const s of L.SOLIDS) {
-    const [x0, x1, y0, y1, z0, z1] = s.b, mat = 'paint:' + s.paint, dens = s.ext ? 2 : undefined;
-    b.box(x0, x1, y0, y1, z0, z1, mat, { skip: ['ny', 'py'], collide: true, dens });
+    const [x0, x1, y0, y1, z0, z1] = s.b, side = s.mat || 'paint:' + s.paint, mat = s.top || side, dens = s.ext ? 2 : undefined;
+    b.box(x0, x1, y0, y1, z0, z1, side, { skip: ['ny', 'py'], collide: true, dens });
     const cover = [...floorRectsAt(y1), ...landings.filter(([y]) => Math.abs(y - y1) < 1e-6).map(([, q]) => q)];
     for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], cover)) {
       if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) b.poly([[a0, y1, c0], [a0, y1, c1], [a1, y1, c1], [a1, y1, c0]], mat, { n: [0, 1, 0], dens });
@@ -925,8 +933,9 @@ function stairs(b) {
     const n = f.risers, rise = (hi - lo) / n, d = (z1 - z0) / n;
     const upAtZ1 = f.h1 > f.h0;
     const soffit = SOFFITS[f.id];
-    const riserMat = f.finish === 'oak' ? TRIM : f.finish === 'carpet' ? 'carpetBeige' : 'stone';
-    const treadMat = f.finish === 'oak' ? 'oakTread' : riserMat;
+    // outside steps: ledgestone risers under bluestone treads
+    const riserMat = f.finish === 'oak' ? TRIM : f.finish === 'carpet' ? 'carpetBeige' : 'ledgestone';
+    const treadMat = f.finish === 'oak' ? 'oakTread' : f.finish === 'stone' ? 'bluestone' : riserMat;
     for (let k = 1; k <= n; k++) {
       const top = lo + k * rise;
       const za = upAtZ1 ? z0 + (k - 1) * d : z1 - k * d;
@@ -942,15 +951,17 @@ function stairs(b) {
         b.box(x0, x1, base, top, Math.min(za, zb), Math.max(za, zb), treadMat, { skip: ['ny', back, 'nx', 'px'], dens: 7, bevel: 0.03 });
         continue;
       }
-      b.box(x0, x1, base, top - 0.09, Math.min(za, zb), Math.max(za, zb), riserMat, { skip: ['ny', 'py'], dens: 6 });
+      // the bottom steps of a stoop flare out (f.flare: extra width [west, east] from the bottom step up)
+      const [fw, fe] = f.flare?.[k - 1] || [0, 0], sx0 = x0 - fw, sx1 = x1 + fe;
+      b.box(sx0, sx1, base, top - 0.09, Math.min(za, zb), Math.max(za, zb), riserMat, { skip: ['ny', 'py'], dens: 6 });
       // the nose's front face is only 0.09 tall: lightmapped, its texels land mostly inside the riser block
       // below and bake black, so the lip is drawn probe-lit instead and the tread box has no front face
       const sg = Math.sign(nose);
       const t0 = Math.min(za, zb, zFront + nose), t1 = Math.max(za, zb, zFront + nose);
       // open side: tread ends run 0.05 past the stringer and show their end grain
-      const tx0 = x0 - (f.open < 0 ? 0.05 : 0), tx1 = x1 + (f.open > 0 ? 0.05 : 0);
+      const tx0 = sx0 - (f.open < 0 ? 0.05 : 0), tx1 = sx1 + (f.open > 0 ? 0.05 : 0);
       const lip = f.finish === 'oak';                           // (the exterior stone stoops keep a plain box)
-      const tSkip = ['ny', ...(lip ? [front] : []), ...(f.open < 0 ? [] : ['nx']), ...(f.open > 0 ? [] : ['px'])];
+      const tSkip = ['ny', ...(lip ? [front] : []), ...(f.open < 0 || f.exterior ? [] : ['nx']), ...(f.open > 0 || f.exterior ? [] : ['px'])];
       b.box(tx0, tx1, top - 0.09, top, t0, t1, treadMat, { skip: tSkip, dens: 7, uv: f.finish === 'oak' ? 'face' : undefined, bevel: 0.035 });
       if (lip) {
         const zn = zFront + nose;
@@ -2519,40 +2530,103 @@ function appliance(b, f, front) {
 }
 
 // ================================================================ exterior ===
-// Roof: a 5/12 gable over the main block (ridge running east-west), a low shed over the
-// living-room bump-out and porch, and a shed over the rear stair annex. h = height at z[0], z[1].
-const RC = L.MAIN_CEIL;
-const ROOF_PLANES = [
-  { x: [-1, 46], z: [-1, 13.95], h: [RC + 0.48, RC + 6.7] },
-  { x: [-1, 46], z: [13.95, 28.9], h: [RC + 6.7, RC + 0.48] },
-  { x: [20.3, 46], z: [27.9, 37.2], h: [RC + 0.9, RC + 0.15] },
-  { x: [34.5, 46], z: [-9, 0], h: [L.annexCeil(-9) + 0.75, L.annexCeil(0) + 0.75] },   // lean-to over the rear stairs
+// Roof (from the aerial view): a 5/12 hip over the main block, and a hipped front wing over the entry bay and
+// the living-room bump-out. The wing's east slope carries on the main roof's east hip in one plane; its west
+// slope meets the main front slope in a valley. Eaves all round at EAVE. A shed over the rear stair annex.
+const RC = L.MAIN_CEIL, EAVE = RC + 0.48, PITCH = 6.22 / 14.95;
+const RX0 = -1, RX1 = 46, RZ0 = -1, RZ1 = 28.9, WX = 19.85, WZ = 37.2;              // eave lines (0.75 out from the walls)
+const RIDGE_Z = (RZ0 + RZ1) / 2, HX0 = RX0 + (RIDGE_Z - RZ0), HX1 = RX1 - (RIDGE_Z - RZ0);   // main ridge, HX0..HX1
+const WXR = (WX + RX1) / 2, WZA = WZ - (RX1 - WX) / 2, WZV = RZ1 - (WXR - WX);        // wing ridge x, its front apex and valley top
+// each facet: h = EAVE + PITCH * (up · (x, z) - c), drawn as convex plan polygons (mid: a rectangle cut round skylights)
+const HIP = [
+  { up: [0, 1], c: RZ0, polys: [[[RX0, RZ0], [HX0, RZ0], [HX0, RIDGE_Z]], [[HX1, RZ0], [RX1, RZ0], [HX1, RIDGE_Z]]], mid: [HX0, HX1, RZ0, RIDGE_Z] },   // back
+  { up: [0, -1], c: -RZ1, polys: [[[RX0, RZ1], [HX0, RIDGE_Z], [HX1, RIDGE_Z], [WXR, WZV], [WX, RZ1]]] },                    // front, to the valley
+  { up: [1, 0], c: RX0, polys: [[[RX0, RZ0], [HX0, RIDGE_Z], [RX0, RZ1]]] },                                                   // west hip
+  { up: [-1, 0], c: -RX1, polys: [[[RX1, RZ0], [HX1, RIDGE_Z], [WXR, WZV]], [[WXR, WZV], [WXR, WZA], [RX1, WZ], [RX1, RZ0]]] },   // east
+  { up: [1, 0], c: WX, polys: [[[WX, RZ1], [WXR, WZV], [WXR, WZA], [WX, WZ]]] },                                               // wing, west
+  { up: [0, -1], c: -WZ, polys: [[[WX, WZ], [WXR, WZA], [RX1, WZ]]] },                                                         // wing, front
 ];
+const hipH = (f, x, z) => EAVE + PITCH * (f.up[0] * x + f.up[1] * z - f.c);
+// top of the hip roof over a point (the wing where it rises above the main roof), -Infinity outside it
+function hipTop(x, z) {
+  let h = -Infinity;
+  if (x >= RX0 && x <= RX1 && z >= RZ0 && z <= RZ1) h = Math.min(...HIP.slice(0, 4).map(f => hipH(f, x, z)));
+  if (x >= WX && x <= RX1 && z >= WZV && z <= WZ) h = Math.max(h, Math.min(...[3, 4, 5].map(i => hipH(HIP[i], x, z))));
+  return h;
+}
+const LEAN = { x: [34.5, 46], z: [-9, 0], h: [L.annexCeil(-9) + 0.75, L.annexCeil(0) + 0.75] };   // lean-to over the rear stairs
 const planeH = (p, z) => p.h[0] + (p.h[1] - p.h[0]) * (z - p.z[0]) / (p.z[1] - p.z[0]);
 // underside of the lowest roof over a point (NaN if none)
 export function roofUnder(x, z) {
-  let h = Infinity;
-  for (const p of ROOF_PLANES) if (x >= p.x[0] && x <= p.x[1] && z >= p.z[0] - 1e-6 && z <= p.z[1] + 1e-6) h = Math.min(h, planeH(p, z) - 0.12);
-  return h === Infinity ? NaN : h;
+  let h = hipTop(x, z);
+  if (x >= LEAN.x[0] && x <= LEAN.x[1] && z >= LEAN.z[0] - 1e-6 && z <= LEAN.z[1] + 1e-6) h = Math.min(h === -Infinity ? Infinity : h, planeH(LEAN, z));
+  return h === -Infinity ? NaN : h - 0.12;
+}
+// planar polygon with explicit uvs, wound to face n
+function polyUV(b, pts, uv, mat, n, o = {}) {
+  let ny = 0;
+  for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; ny += (p[2] - q[2]) * (p[0] + q[0]); }
+  if (ny * n[1] < 0) { pts = pts.slice().reverse(); uv = uv.slice().reverse(); }
+  b.poly(pts, mat, { ...o, n, uv });
 }
 
 function exterior(b) {
+  // ---- roof: shingles (courses along each eave), white soffit under it, fascia and gutters on the eaves
   const holes = L.SKYLIGHTS.map(sk => (sk.lean ? skylightShaft(sk).glass : sk.r)).map(([a0, a1, c0, c1]) => [a0 - 0.2, a1 + 0.2, c0 - 0.2, c1 + 0.2]);
-  for (const p of ROOF_PLANES) {
+  const slopeLen = Math.hypot(1, PITCH);
+  for (const f of HIP) {
+    const polys = f.polys.slice();
+    if (f.mid) {
+      const [x0, x1, z0, z1] = f.mid, hs = holes.filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1);
+      for (const [a0, a1, c0, c1] of rectMinus(f.mid, hs)) if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) polys.push([[a0, c0], [a1, c0], [a1, c1], [a0, c1]]);
+    }
+    for (const P of polys) {
+      const uv = P.map(([x, z]) => [f.up[1] * x - f.up[0] * z, (f.up[0] * x + f.up[1] * z - f.c) * slopeLen]);
+      polyUV(b, P.map(([x, z]) => [x, hipH(f, x, z), z]), uv, 'roof', [0, 1, 0], { dens: 0.8 });
+      b.poly(P.map(([x, z]) => [x, hipH(f, x, z) - 0.12, z]), 'soffit', { n: [0, -1, 0], dens: 0.8 });
+    }
+  }
+  // eaves, anticlockwise from the back-west corner: [x0, z0, x1, z1, outward normal, gutter end extensions]
+  const EAVES = [
+    [RX0, RZ0, RX1, RZ0, [0, 0, -1], [0.4, 0.4]], [RX1, RZ0, RX1, WZ, [1, 0, 0], [0.4, 0.4]], [RX1, WZ, WX, WZ, [0, 0, 1], [0.4, 0.4]],
+    [WX, WZ, WX, RZ1, [-1, 0, 0], [0.4, 0]], [WX, RZ1, RX0, RZ1, [0, 0, 1], [0, 0.4]], [RX0, RZ1, RX0, RZ0, [-1, 0, 0], [0.4, 0.4]],
+  ];
+  for (const [x0, z0, x1, z1, n, [e0, e1]] of EAVES) {
+    b.poly([[x0, EAVE - 0.55, z0], [x1, EAVE - 0.55, z1], [x1, EAVE + 0.02, z1], [x0, EAVE + 0.02, z0]], 'soffit', { n, dens: 1.5 });
+    // K-style gutter just outside the fascia
+    const ux = Math.sign(x1 - x0), uz = Math.sign(z1 - z0), span = (a, b2, o) => [Math.min(a, b2) + o, Math.max(a, b2) + o];
+    const [gx0, gx1] = ux ? span(x0 - ux * e0, x1 + ux * e1, 0) : span(x0 + n[0] * 0.01, x0 + n[0] * 0.41, 0);
+    const [gz0, gz1] = uz ? span(z0 - uz * e0, z1 + uz * e1, 0) : span(z0 + n[2] * 0.01, z0 + n[2] * 0.41, 0);
+    b.mbox(gx0, gx1, EAVE - 0.45, EAVE - 0.05, gz0, gz1, 'vinyl');
+  }
+  // three downspouts down the walls, each with an offset under the soffit up into its gutter
+  for (const [x, z, gx, gz] of [[0.45, 28.32, 0.45, 29.11], [45.42, 34.5, 46.21, 34.5], [0.45, -0.42, 0.45, -1.21]]) {
+    b.mbox(x - 0.12, x + 0.12, 0, EAVE - 0.8, z - 0.15, z + 0.15, 'vinyl');
+    b.mbox(Math.min(x, gx) - 0.12, Math.max(x, gx) + 0.12, EAVE - 1.1, EAVE - 0.8, Math.min(z, gz) - 0.12, Math.max(z, gz) + 0.12, 'vinyl');
+    b.mbox(gx - 0.12, gx + 0.12, EAVE - 0.8, EAVE - 0.45, gz - 0.12, gz + 0.12, 'vinyl');
+  }
+  // small vent stack near the ridge
+  const vx = 25.1, vz = 12.9, vy = hipH(HIP[0], vx, vz - 0.5) - 0.3;
+  b.mbox(vx - 0.5, vx + 0.5, vy, vy + 2.3, vz - 0.5, vz + 0.5, 'stoneCap');
+  b.mbox(vx - 0.6, vx + 0.6, vy + 2.3, vy + 2.45, vz - 0.6, vz + 0.6, 'galvanized');
+  // lean-to over the rear stairs: shingles, underside, fascia on its eave and rakes
+  {
+    const p = LEAN, top = z => planeH(p, z), bot = z => planeH(p, z) - 0.12;
     const hs = holes.filter(([a0, a1, c0, c1]) => a0 >= p.x[0] && a1 <= p.x[1] && c0 >= p.z[0] && c1 <= p.z[1]);
+    const k = (p.h[1] - p.h[0]) / (p.z[1] - p.z[0]), sl = Math.hypot(1, k);
     for (const [a0, a1, c0, c1] of rectMinus([p.x[0], p.x[1], p.z[0], p.z[1]], hs)) {
-      const top = z => planeH(p, z), bot = z => planeH(p, z) - 0.12;
-      b.poly([[a0, top(c0), c0], [a1, top(c0), c0], [a1, top(c1), c1], [a0, top(c1), c1]], 'roof', { n: [0, 1, 0], dens: 0.8 });
+      const pts = [[a0, top(c0), c0], [a1, top(c0), c0], [a1, top(c1), c1], [a0, top(c1), c1]];
+      polyUV(b, pts, pts.map(([x, , z]) => [-x, (z - p.z[0]) * sl]), 'roof', [0, 1, 0], { dens: 0.8 });
       b.poly([[a0, bot(c0), c0], [a1, bot(c0), c0], [a1, bot(c1), c1], [a0, bot(c1), c1]], 'soffit', { n: [0, -1, 0], dens: 0.8 });
     }
-    // fascia boards on the eaves and rakes
-    const lowZ = p.h[0] < p.h[1] ? p.z[0] : p.z[1], lowH = Math.min(...p.h);
-    b.poly([[p.x[0], lowH - 0.55, lowZ], [p.x[1], lowH - 0.55, lowZ], [p.x[1], lowH + 0.02, lowZ], [p.x[0], lowH + 0.02, lowZ]], 'soffit', { n: [0, 0, lowZ === p.z[0] ? -1 : 1], dens: 1.5 });
+    const lowZ = p.z[0], lowH = p.h[0];
+    b.poly([[p.x[0], lowH - 0.55, lowZ], [p.x[1], lowH - 0.55, lowZ], [p.x[1], lowH + 0.02, lowZ], [p.x[0], lowH + 0.02, lowZ]], 'soffit', { n: [0, 0, -1], dens: 1.5 });
+    b.mbox(p.x[0] - 0.4, p.x[1] + 0.4, lowH - 0.45, lowH - 0.05, lowZ - 0.41, lowZ - 0.01, 'vinyl');
     for (const [x, s] of [[p.x[0], -1], [p.x[1], 1]]) {
       b.poly([[x, planeH(p, p.z[0]) - 0.45, p.z[0]], [x, planeH(p, p.z[1]) - 0.45, p.z[1]], [x, planeH(p, p.z[1]) + 0.02, p.z[1]], [x, planeH(p, p.z[0]) + 0.02, p.z[0]]], 'soffit', { n: [s, 0, 0], dens: 1.5 });
     }
   }
-  // siding between the wall tops and the roof (eave friezes and the gable triangles)
+  // ---- walls between the wall tops and the roof (short friezes under the eaves): shakes, stone on the bay
   for (const w of L.WALLS) {
     if (!w.ext) continue;
     const { alongX, t, c, a0, a1 } = wallInfo(w);
@@ -2560,7 +2634,6 @@ function exterior(b) {
     const sides = [-1, 1].filter(s => !inside(s));
     const stops = new Set([a0 - t / 2, a1 + t / 2]);
     for (let a = Math.ceil(a0); a < a1; a++) stops.add(a);
-    if (!alongX) stops.add(13.95);
     const xs = [...stops].filter(a => a >= a0 - t / 2 && a <= a1 + t / 2).sort((m, n) => m - n);
     for (const side of sides) {
       const off = side * t / 2;
@@ -2569,18 +2642,132 @@ function exterior(b) {
         const ha = roofUnder(pa[0], pa[2]), hb = roofUnder(pb[0], pb[2]);
         const ta = wallTop(w, xs[i]), tb = wallTop(w, xs[i + 1]);
         if (!(ha > ta + 0.01) || !(hb > tb + 0.01)) continue;
-        b.poly([wp(alongX, c, xs[i], off, ta), wp(alongX, c, xs[i + 1], off, tb), wp(alongX, c, xs[i + 1], off, hb), wp(alongX, c, xs[i], off, ha)], 'siding', { n: wn(alongX, side), dens: 1.2 });
+        const mat = extFinish((pa[0] + pb[0]) / 2, (pa[2] + pb[2]) / 2, (ta + ha) / 2, wn(alongX, side));
+        b.poly([wp(alongX, c, xs[i], off, ta), wp(alongX, c, xs[i + 1], off, tb), wp(alongX, c, xs[i + 1], off, hb), wp(alongX, c, xs[i], off, ha)], mat, { n: wn(alongX, side), dens: 1.2 });
       }
     }
   }
-  b.poly([[20.8, L.MAIN_CEIL, 30], [28.8, L.MAIN_CEIL, 30], [28.8, L.MAIN_CEIL, 35], [20.8, L.MAIN_CEIL, 35]], 'soffit', { n: [0, -1, 0], dens: 2 });
-  // ground, driveway, walks, street
-  b.poly([[-140, -0.03, -140], [190, -0.03, -140], [190, -0.03, 190], [-140, -0.03, 190]], 'grass', { n: [0, 1, 0], dens: 0.12 });
-  b.poly([[0.2, -0.01, L.GARAGE_Z], [20.6, -0.01, L.GARAGE_Z], [20.6, -0.01, 75], [0.2, -0.01, 75]], 'concrete', { n: [0, 1, 0], dens: 0.6 });
-  const walk0 = L.FLIGHTS.find(f => f.id === 'frontStoop').r[3];
-  b.poly([[22.6, -0.01, walk0], [27, -0.01, walk0], [27, -0.01, 75], [22.6, -0.01, 75]], 'stone', { n: [0, 1, 0], dens: 0.8 });
-  b.poly([[35.9, -0.01, -30], [39.1, -0.01, -30], [39.1, -0.01, -13.2], [35.9, -0.01, -13.2]], 'stone', { n: [0, 1, 0], dens: 0.8 });
-  b.poly([[-140, -0.005, 75], [190, -0.005, 75], [190, -0.005, 100], [-140, -0.005, 100]], 'asphalt', { n: [0, 1, 0], dens: 0.1 });
+  // entry recess: a stone-faced header over the opening down to just above the door, a white ceiling behind it
+  const PORCH = 14.3, hz0 = 35.2, hz1 = 35.3, hTop = roofUnder(24.8, hz1);
+  b.poly([[20.8, PORCH, 30], [28.8, PORCH, 30], [28.8, PORCH, hz0], [20.8, PORCH, hz0]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.box(20.6, 29.05, PORCH, hTop, hz0, hz1, 'ledgestone', { skip: ['nz', 'py'], dens: 2 });
+  // white corner boards on the outside corners of the shakes (on the front, from the stone's cap up)
+  const CAP = L.MAIN - 0.1, C1 = CAP + 0.14;
+  for (const [x, z, sx, sz, y0x, y0z] of [[-0.25, -0.25, -1, -1, 0, 0], [-0.25, 28.15, -1, 1, 0, C1], [45.25, 35.25, 1, 1, 0, C1], [34.75, -8.25, -1, -1, 0, 0], [45.25, -8.25, 1, -1, 0, 0]]) {
+    const y1 = roofUnder(x + sx * 0.05, z + sz * 0.05);
+    b.mbox(Math.min(x, x + sx * 0.07), Math.max(x, x + sx * 0.07), y0x, y1, Math.min(z, z - sz * 0.38), Math.max(z, z - sz * 0.38), 'vinyl');   // on the x-facing face
+    b.mbox(Math.min(x - sx * 0.38, x + sx * 0.07), Math.max(x - sx * 0.38, x + sx * 0.07), y0z, y1, Math.min(z, z + sz * 0.07), Math.max(z, z + sz * 0.07), 'vinyl');
+  }
+  // cap where the front stone stops under the shakes (not under the bow window, whose soffit is there)
+  b.box(-0.25, 20.6, CAP, CAP + 0.14, 28.15, 28.35, 'stoneCap', { skip: ['nz', 'px'], dens: 3, bevel: 0.02 });
+  b.box(29.05, L.BOW.x0 - 0.05, CAP, CAP + 0.14, 35.25, 35.45, 'stoneCap', { skip: ['nz', 'nx'], dens: 3, bevel: 0.02 });
+  b.box(L.BOW.x1 + 0.05, 45.25, CAP, CAP + 0.14, 35.25, 35.45, 'stoneCap', { skip: ['nz'], dens: 3, bevel: 0.02 });
+  stoopRails(b);
+  planter(b);
+  // ---- ground: lawn; asphalt drive with a grey paver soldier course, scored concrete sidewalk and a lawn
+  // strip to the curb, the street; a bluestone pad at the foot of the stoop; a small patio out back
+  const G = (x0, x1, z0, z1, y, mat, o = {}) => b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], mat, { n: [0, 1, 0], ...o });
+  const DX0 = 0.2, DX1 = 20.6, PV = 0.67, SW0 = 65, SW1 = 69.5, CURB = 74.5, STREET = 75;
+  G(-140, 190, -140, 190, -0.03, 'grass', { dens: 0.12 });
+  G(DX0 + PV, DX1 - PV, L.GARAGE_Z + 0.25, SW0 - PV, -0.01, 'asphalt', { dens: 0.5 });
+  const band = (x0, x1, z0, z1, alongX) => {
+    const pts = [[x0, -0.01, z0], [x1, -0.01, z0], [x1, -0.01, z1], [x0, -0.01, z1]];
+    polyUV(b, pts, pts.map(([x, , z]) => (alongX ? [x, z - z0] : [z, x - x0])), 'pavers', [0, 1, 0], { dens: 1 });
+  };
+  band(DX0, DX0 + PV, L.GARAGE_Z + 0.25, SW0, false); band(DX1 - PV, DX1, L.GARAGE_Z + 0.25, SW0, false); band(DX0 + PV, DX1 - PV, SW0 - PV, SW0, true);
+  G(-140, 190, SW0, SW1, -0.01, 'sidewalk', { dens: 0.3 });
+  G(DX0, DX1, SW1, STREET, -0.01, 'asphalt', { dens: 0.5 });                                  // apron across the lawn strip
+  G(-140, DX0, CURB, STREET, -0.01, 'concrete', { dens: 0.2 }); G(DX1, 190, CURB, STREET, -0.01, 'concrete', { dens: 0.2 });
+  G(-140, 190, STREET, 100, -0.005, 'asphalt', { dens: 0.1 });
+  const stoop = L.FLIGHTS.find(f => f.id === 'frontStoop').r;
+  G(DX1, stoop[1], stoop[3], stoop[3] + 1.6, -0.01, 'bluestone', { dens: 1 });
+  G(24, 41, -20, -13.2, -0.01, 'concrete', { dens: 0.5 });
+  // white vinyl privacy fence, 6' high, along the back and side lot lines
+  fence(b, [[-12, 4], [-12, -34], [54, -34], [54, 20]]);
+}
+// White vinyl railings down both sides of the front stoop: a post at the bay and one at the foot, top and
+// bottom rails following the nosing line, square balusters between.
+function stoopRails(b) {
+  const f = L.FLIGHTS.find(q => q.id === 'frontStoop'), [x0, x1, z0, z1] = f.r;
+  const rise = (f.h0 - f.h1) / f.risers, d = (z1 - z0) / f.risers;
+  const nose = z => rise * (1 + (z1 + 0.09 - z) / d);                // nosing line (the treads' front edges)
+  const pa = 35.55, pb = z1 - 0.55, V = 'vinyl';
+  for (const x of [x0 + 0.22, x1 - 0.22]) {
+    for (const z of [pa, pb]) {
+      b.mbox(x - 0.21, x + 0.21, 0, nose(z) + 3.05, z - 0.21, z + 0.21, V);
+      b.mbox(x - 0.26, x + 0.26, nose(z) + 3.05, nose(z) + 3.15, z - 0.26, z + 0.26, V);
+    }
+    const za = pa + 0.21, zb = pb - 0.21;
+    beam(b, [x, nose(za) + 2.8, za], [x, nose(zb) + 2.8, zb], 0.2, 0.22, V);
+    beam(b, [x, nose(za) + 0.4, za], [x, nose(zb) + 0.4, zb], 0.14, 0.14, V);
+    const n = Math.round((zb - za) / 0.36);
+    for (let i = 1; i < n; i++) {
+      const z = za + (zb - za) * i / n;
+      b.mbox(x - 0.055, x + 0.055, nose(z) + 0.47, nose(z) + 2.69, z - 0.055, z + 0.055, V);
+    }
+    b.collider(x - 0.21, x + 0.21, 0, 10, pa, pb);
+  }
+}
+// Raised planter bed curving round the right side of the stoop's foot back to the house: ledgestone wall with a
+// bluestone cap, mulch and a few low shrubs.
+function planter(b) {
+  const f = L.FLIGHTS.find(q => q.id === 'frontStoop'), xs = f.r[1];
+  const P0 = [xs + 0.06, 41.0], P1 = [41.0, 43.2], P2 = [41.0, 35.3], N = 18, T = 0.6, H = 1.45;
+  const at = t => [0, 1].map(i => (1 - t) ** 2 * P0[i] + 2 * (1 - t) * t * P1[i] + t * t * P2[i]);
+  const C = [], I = [], O = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, p = at(t), q = at(Math.min(1, t + 1e-3)), r = at(Math.max(0, t - 1e-3));
+    const dx = q[0] - r[0], dz = q[1] - r[1], l = Math.hypot(dx, dz), nx = dz / l, nz = -dx / l;   // nx,nz: toward the house side
+    C.push(p); I.push([p[0] + nx * T / 2, p[1] + nz * T / 2]); O.push([p[0] - nx * T / 2, p[1] - nz * T / 2]);
+  }
+  for (let i = 0; i < N; i++) {
+    const [a, c] = [O[i], O[i + 1]], [e, g] = [I[i], I[i + 1]];
+    b.poly([[a[0], 0, a[1]], [c[0], 0, c[1]], [c[0], H, c[1]], [a[0], H, a[1]]], 'ledgestone', { n: [c[1] - a[1], 0, a[0] - c[0]].map(v => -v), dens: 2 });
+    b.poly([[e[0], 0, e[1]], [g[0], 0, g[1]], [g[0], H, g[1]], [e[0], H, e[1]]], 'ledgestone', { n: [g[1] - e[1], 0, e[0] - g[0]], dens: 2 });
+    const lo = [Math.min(a[0], c[0], e[0], g[0]), Math.max(a[0], c[0], e[0], g[0]), Math.min(a[1], c[1], e[1], g[1]), Math.max(a[1], c[1], e[1], g[1])];
+    b.collider(lo[0], lo[1], 0, H, lo[2], lo[3]);
+  }
+  // cap: slightly wider than the wall, one slab per segment
+  const CO = [], CI = [];
+  for (let i = 0; i <= N; i++) { const [cx, cz] = C[i], [ix, iz] = I[i]; const ux = (ix - cx) / (T / 2), uz = (iz - cz) / (T / 2); CO.push([cx - ux * 0.4, cz - uz * 0.4]); CI.push([cx + ux * 0.4, cz + uz * 0.4]); }
+  for (let i = 0; i < N; i++) {
+    const q = [CO[i], CO[i + 1], CI[i + 1], CI[i]];
+    b.poly(q.map(([x, z]) => [x, H + 0.12, z]), 'bluestone', { n: [0, 1, 0], dens: 2 });
+    for (const [E, sg] of [[CO, -1], [CI, 1]]) {
+      const [e0, e1] = [E[i], E[i + 1]];
+      b.poly([[e0[0], H, e0[1]], [e1[0], H, e1[1]], [e1[0], H + 0.12, e1[1]], [e0[0], H + 0.12, e0[1]]], 'bluestone', { n: [sg * (e1[1] - e0[1]), 0, sg * (e0[0] - e1[0])], dens: 2 });
+    }
+  }
+  // wall ends: against the stoop's side and the house
+  for (const k of [0, N]) b.poly([[O[k][0], 0, O[k][1]], [I[k][0], 0, I[k][1]], [I[k][0], H, I[k][1]], [O[k][0], H, O[k][1]]], 'ledgestone', { n: k === 0 ? [-1, 0, 0] : [0, 0, -1], dens: 2 });
+  // mulch inside the bed (convex: the curve's inside edge closed along the stoop and the house)
+  b.poly([...I.map(([x, z]) => [x, H - 0.25, z]), [xs, H - 0.25, 35.3]], 'mulch', { n: [0, 1, 0], dens: 1 });
+  // low shrubs and a clump of grasses
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (const [x, z, r] of [[30.2, 37.2, 0.9], [32.6, 38.9, 1.0], [35.2, 39.6, 0.95], [37.9, 38.6, 0.9], [39.4, 36.4, 0.8], [30.4, 39.8, 0.7], [34.0, 36.4, 0.75], [36.9, 36.1, 0.7]]) {
+    const g = new THREE.IcosahedronGeometry(r, 1), pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const k = 0.85 + rnd() * 0.3; pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.7, pos.getZ(i) * k); }
+    g.computeVertexNormals();
+    b.prim(g, rnd() < 0.5 ? 'paint:#4f6b33' : 'paint:#5f7d3c', x, H - 0.25 + r * 0.45, z, rnd() * 3);
+  }
+}
+// White vinyl privacy fence along a polyline: posts every 8', solid 6' panels between with a top rail.
+function fence(b, pts) {
+  const V = 'vinyl';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1], len = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(len / 8);
+    for (let k = 0; k <= n; k++) {
+      const x = x0 + (x1 - x0) * k / n, z = z0 + (z1 - z0) * k / n;
+      if (k > 0 || i === 0) { b.mbox(x - 0.21, x + 0.21, 0, 6.3, z - 0.21, z + 0.21, V); b.mbox(x - 0.26, x + 0.26, 6.3, 6.4, z - 0.26, z + 0.26, V); }
+      if (k === n) continue;
+      const xa = x + (x1 - x0) / n, za = z + (z1 - z0) / n, alongX = z0 === z1;
+      const [ax0, ax1] = [Math.min(x, xa), Math.max(x, xa)], [az0, az1] = [Math.min(z, za), Math.max(z, za)];
+      if (alongX) { b.mbox(ax0 + 0.21, ax1 - 0.21, 0.15, 5.85, z - 0.06, z + 0.06, V); b.mbox(ax0 + 0.21, ax1 - 0.21, 5.85, 6.1, z - 0.1, z + 0.1, V); }
+      else { b.mbox(x - 0.06, x + 0.06, 0.15, 5.85, az0 + 0.21, az1 - 0.21, V); b.mbox(x - 0.1, x + 0.1, 5.85, 6.1, az0 + 0.21, az1 - 0.21, V); }
+    }
+    b.collider(Math.min(x0, x1) - 0.2, Math.max(x0, x1) + 0.2, 0, 6.3, Math.min(z0, z1) - 0.2, Math.max(z0, z1) + 0.2);
+  }
 }
 
 // ================================================================== doors ===
@@ -2600,6 +2787,15 @@ function buildDoor(s) {
     }
   }
   lb.mesh(g, s.style === 'front' ? 'frontDoor' : 'doorWhite');
+  if (s.style === 'front') {
+    // outside face: dark mahogany stiles and rails, a moulding round the decorative glass and two raised
+    // panels below it (the photo texture is the inside, where the slab is in shadow)
+    const M = 'stain:#4e2016', z0 = T / 2, gx0 = 0.02 + 0.204 * w, gx1 = 0.02 + 0.79 * w, gy0 = 0.02 + 0.311 * H, gy1 = 0.02 + 0.905 * H;
+    for (const [a, c, e, f] of [[0.02, gx0, 0.02, H + 0.02], [gx1, w + 0.02, 0.02, H + 0.02], [gx0, gx1, gy1, H + 0.02], [gx0, gx1, 0.02, gy0]]) lb.mbox(a, c, e, f, z0, z0 + 0.008, M);
+    for (const [a, c, e, f] of [[gx0 - 0.06, gx0, gy0 - 0.06, gy1 + 0.06], [gx1, gx1 + 0.06, gy0 - 0.06, gy1 + 0.06], [gx0, gx1, gy1, gy1 + 0.06], [gx0, gx1, gy0 - 0.06, gy0]]) lb.mbox(a, c, e, f, z0 + 0.008, z0 + 0.03, M);
+    const pm = (gx0 + gx1) / 2;
+    for (const [a, c] of [[gx0 + 0.05, pm - 0.08], [pm + 0.08, gx1 - 0.05]]) lb.mbox(a, c, 0.02 + 0.09 * H, 0.02 + 0.25 * H, z0 + 0.008, z0 + 0.025, M);
+  }
   if (s.style === 'panel' && w > (sl ? 1.0 : 1.2)) {
     const P = sl ? 0.025 : 0.035;
     for (const side of [-1, 1]) {
@@ -2638,10 +2834,20 @@ function doorKnob(lb, mat, x, y, z0, side) {
   lb.prim(lathe, mat, x, y, z0 + side * 0.02, 0, { rx: side * Math.PI / 2 });
 }
 function buildGarageDoor(s) {
-  const w = s.x1 - s.x0, lb = new Builder();
+  // white raised-panel sectional door: four sections with four raised panels across each, joints between
+  const w = s.x1 - s.x0, lb = new Builder(), T = 0.075, sh = s.h / 4;
   const g = new THREE.BoxGeometry(w, s.h, 0.15, 8, 8, 1);
   g.translate(w / 2, s.h / 2, 0);
   lb.mesh(g, 'garageDoor');
-  for (let i = 1; i < 4; i++) lb.mbox(0, w, i * s.h / 4 - 0.03, i * s.h / 4 + 0.03, -0.1, 0.1, 'garageDoor');
+  const n = 4, mx = 0.3, gap = 0.3, pw = (w - 2 * mx - (n - 1) * gap) / n;
+  for (let r = 0; r < 4; r++) {
+    const y0 = r * sh + 0.32, y1 = (r + 1) * sh - 0.32;
+    for (let k = 0; k < n; k++) {
+      const x0 = mx + k * (pw + gap);
+      lb.mbox(x0, x0 + pw, y0, y1, T, T + 0.02, 'paint:#dcdad3');                        // bevelled border, in shade
+      lb.mbox(x0 + 0.1, x0 + pw - 0.1, y0 + 0.1, y1 - 0.1, T + 0.02, T + 0.04, 'garageDoor');
+    }
+    if (r) for (const z of [T, -T - 0.006]) lb.mbox(0, w, r * sh - 0.015, r * sh + 0.015, z, z + 0.006, 'paint:#bdbbb4');
+  }
   return { spec: s, parts: lb.parts, w };
 }

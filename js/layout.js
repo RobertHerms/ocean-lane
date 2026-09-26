@@ -258,7 +258,7 @@ export const FLOORS = [
   { r: [42.2, 45, -3.3, 0], h: MAIN },
   { r: [24.8, 28.8, FU.z1, 30], h: FRONT },
   { r: [20.8, 28.8, FD.z1, 30], h: FRONT },
-  { r: [21.2, 28.4, 30, 31.4], h: FRONT },
+  { r: [21.02, 28.53, 30, 31.4], h: FRONT },
   { r: [35, 42.2, -8, -4.4], h: MID },
   { r: [42.2, 45, -8, -3.3], h: MID },
   { r: [35.6, 39.4, -9.4, -8], h: MID },
@@ -266,7 +266,8 @@ export const FLOORS = [
 export const FLIGHTS = [
   { id: 'frontUp', r: [24.8, 28.8, FU.z0, FU.z1], h0: MAIN, h1: FRONT, risers: 5, finish: 'oak', open: -1, under: PAINT.storage },   // 4 treads
   { id: 'frontDown', r: [20.8, 24.8, FD.z0, FD.z1], h0: LOW, h1: FRONT, risers: 11, finish: 'oak', under: PAINT.storage },   // 10 treads; storage under it
-  { id: 'frontStoop', r: [22.6, 27, 31.4, 31.4 + 11 * 0.92], h0: FRONT, h1: LOW, risers: 11, finish: 'stone', exterior: true },
+  { id: 'frontStoop', r: [21.02, 28.53, 31.4, 31.4 + 11 * 0.92], h0: FRONT, h1: LOW, risers: 11, finish: 'stone', exterior: true,
+    flare: [[1.4, 0], [0.9, 0], [0.45, 0]] },   // the full width of the entry bay; the bottom steps flare toward the driveway
   { id: 'rearUp', r: [35, 38.9, -4.4, 0], h0: MID, h1: MAIN, risers: 8, finish: 'carpet' },
   { id: 'rearDown', r: [38.9, 42.2, -4.4, 0], h0: MID, h1: LOW, risers: 8, finish: 'carpet' },
   { id: 'rearStoop', r: [35.9, 39.1, -13.2, -9.4], h0: LOW, h1: MID, risers: 7, finish: 'stone', exterior: true },
@@ -278,8 +279,8 @@ export const SOLIDS = [
   { b: [42.0, 45, 0, MID, -4.4, -3.3], paint: PAINT.tan },
   { b: [42.0, 45, 0, MAIN, -3.3, 0], paint: PAINT.lower },
   { b: [26.6, 28.8, MAIN, MAIN_CEIL, 9.7, 11.7], paint: PAINT.tan },      // fridge surround
-  { b: [21.2, 28.4, 0, FRONT, 30, 31.4], paint: '#b9b3a7', ext: true },   // front stoop
-  { b: [35.6, 39.4, 0, MID, -9.4, -8], paint: '#b9b3a7', ext: true },
+  { b: [21.02, 28.53, 0, FRONT, 30, 31.4], mat: 'ledgestone', top: 'bluestone', ext: true },   // front stoop
+  { b: [35.6, 39.4, 0, MID, -9.4, -8], mat: 'ledgestone', top: 'bluestone', ext: true },
 ];
 // Between floors: underside = lower-level ceiling
 export const SLABS = [[0, 45, 0, 20], [0, 20.8, 20, GARAGE_Z], [28.8, 45, 20, 35], [42.2, 45, -3.3, 0]];

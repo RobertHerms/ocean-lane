@@ -10,7 +10,8 @@ import path from 'node:path';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8000;
 
-// name: [x, z, feet, yaw, pitch]  (yaw 0 = north, +π/2 west, π south, −π/2 east; pitch > 0 looks up)
+// name: [x, z, feet, yaw, pitch, eye?]  (yaw 0 = north, +π/2 west, π south, −π/2 east; pitch > 0 looks up;
+// eye: camera height above the feet, for the exterior views from the street and from above)
 const POSES = {
   kitchen_corner: [32.5, 7.5, 10, 0.85, 0.15],
   kitchen_west: [33, 5, 10, 1.5708, 0.1],
@@ -58,6 +59,11 @@ const POSES = {
   base_fridge_pier: [34.5, 15.8, 10, 0.6, -0.45],
   base_play_opening: [34, 17, 0, 1.5708, -0.3],
   base_hall_corner: [12.5, 14, 10, -2.33, -0.6],
+  ext_street: [17.5, 77, 0, 0.0, -0.17, 8.2],
+  ext_above: [33.4, 34.4, 0, 0.61, -1.35, 88],   // (the walkthrough clamps pitch to ±1.35: offset back to centre the lot)
+  ext_entry: [22, 52, 0, 0.12, 0.12],
+  ext_garage: [8, 44, 0, 0.1, 0.05],
+  ext_rear: [30, -30, 0, 3.0, 0.2],
 };
 
 async function loadChromium() {
@@ -88,7 +94,12 @@ try {
   await page.addStyleTag({ content: 'body > :not(#view) { display: none !important; }' });   // just the 3D view
   mkdirSync(path.join(root, 'review'), { recursive: true });
   for (const n of names) {
-    await page.evaluate(p => window.__house.snap(...p), POSES[n]);
+    await page.evaluate(p => {
+      const h = window.__house;
+      h.player.eyeH = p[5];
+      h.snap(...p.slice(0, 5));
+      if (p[5] !== undefined) h.player.camY = p[2] + p[5];
+    }, POSES[n]);
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(root, 'review', n + '.png') });
     console.log('review/' + n + '.png');
