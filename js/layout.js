@@ -32,6 +32,7 @@ const HB_HALL = 2.3 + 0.2 + 32 / 12 + 0.2;
 // 1'-5" deep at the centre; sill 1' above the floor, head 1' below the ceiling, a low flat ceiling inside.
 export const BOW = { x0: 31.2, x1: 43.5, z: UP_LIV_Z, sag: 1.45, n: 5, sill: MAIN + 1, head: MAIN + 7, ceil: MAIN + 7.35,
   base: MAIN + 0.6, seat: MAIN + 0.75 };   // cantilevered: underside 1.2' above the overhang soffit; a window seat inside
+export const PWF = 35.25;   // outer face of the playroom's lower front wall
 
 const LO = [0, MAIN - 0.1];
 const HI = [MAIN - 0.1, MAIN_CEIL];
@@ -123,7 +124,8 @@ export const WALLS = [
     hiWin(4.15, 8.15, 4.45, 7.3, { panes: [1, 1], xw: [0.06, 0.06], xh: 0.06, noSill: true }),    // Bedroom 2: twin lites, flat trim (per photos)
     hiWin(12.95, 16.95, 4.45, 7.3, { panes: [1, 1], xw: [0.06, 0.06], xh: 0.06, noSill: true }),  // Bedroom 3 (nursery)
   ], EXT),   // bedrooms 2/3: upper storey, 2.1' out over the garage; ends at 20.35 (free end runs on to x 20.6)
-  wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T, yCuts: [FRONT] }),      // same thickness as the foyer wall it continues
+  wz(20.8, GARAGE_Z, 30.05, ALL, [], { ...EXT, t: WALL_T, yCuts: [FRONT] }),   // foyer/closet part; its free end runs on 0.2 to the door wall's outer face (30.25)
+  wz(20.8, 30.25, 35, [17.5, 18], [], { ...EXT, t: WALL_T }),                   // closes the attic void above the porch ceiling (PORCH = 17.5 in house.js)
   wx(30, 20.85, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
     win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], { ...EXT, yCuts: [FRONT] }),   // yCuts: split the faces there (closet below the landing)
   wz(28.8, 30, 35, ALL, [], EXT),
@@ -275,7 +277,11 @@ export const FLOORS = [
   { r: [42.2, 45, -3.3, 0], h: MAIN },
   { r: [24.8, 28.8, FU.z1, 30], h: FRONT },
   { r: [20.8, 28.8, FD.z1, 30], h: FRONT },
-  { r: [21.02, 28.53, 30, 31.4], h: FRONT },
+  { r: [20.6, 28.55, 30, 35.5], h: FRONT },           // stoop top landing
+  { r: [28.55, 29.05, PWF, 35.5], h: FRONT },         //   in front of the east recess wall's end
+  { r: [20.3, 29.05, 43.5, 45.0], h: 1.875 },         // stoop lower landing
+  { r: [19.0, 21.4, 45.0, 46.0], h: 1.25 },           // bottom step (upper)
+  { r: [17.9, 20.2, 46.0, 47.0], h: 0.625 },          // bottom step (lower)
   { r: [35, 42.2, -8, -4.4], h: MID },
   { r: [42.2, 45, -8, -3.3], h: MID },
   { r: [35.6, 39.4, -9.4, -8], h: MID },
@@ -283,8 +289,7 @@ export const FLOORS = [
 export const FLIGHTS = [
   { id: 'frontUp', r: [24.8, 28.8, FU.z0, FU.z1], h0: MAIN, h1: FRONT, risers: 5, finish: 'oak', open: -1, under: PAINT.storage },   // 4 treads
   { id: 'frontDown', r: [20.8, 24.8, FD.z0, FD.z1], h0: LOW, h1: FRONT, risers: 11, finish: 'oak', under: PAINT.storage },   // 10 treads; storage under it
-  { id: 'frontStoop', r: [21.02, 28.53, 31.4, 31.4 + 11 * 0.92], h0: FRONT, h1: LOW, risers: 11, finish: 'stone', exterior: true,
-    flare: [[1.4, 0], [0.9, 0], [0.45, 0]] },   // the full width of the entry bay; the bottom steps flare toward the driveway
+  { id: 'frontStoop', r: [20.6, 29.05, 35.5, 43.5], h0: FRONT, h1: 1.875, risers: 8, finish: 'stone', exterior: true },   // 8 x 7.5" down to the lower landing; no flare
   { id: 'rearUp', r: [35, 38.9, -4.4, 0], h0: MID, h1: MAIN, risers: 8, finish: 'carpet' },
   { id: 'rearDown', r: [38.9, 42.2, -4.4, 0], h0: MID, h1: LOW, risers: 8, finish: 'carpet' },
   { id: 'rearStoop', r: [35.9, 39.1, -13.2, -9.4], h0: LOW, h1: MID, risers: 7, finish: 'stone', exterior: true },
@@ -296,7 +301,11 @@ export const SOLIDS = [
   { b: [42.0, 45, 0, MID, -4.4, -3.3], paint: PAINT.tan },
   { b: [42.0, 45, 0, MAIN, -3.3, 0], paint: PAINT.lower },
   { b: [26.6, 28.8, MAIN, MAIN_CEIL, 9.7, 11.7], paint: PAINT.tan },      // fridge surround
-  { b: [21.02, 28.53, 0, FRONT, 30, 31.4], mat: 'ledgestone', top: 'bluestone', ext: true },   // front stoop
+  { b: [20.6, 28.55, 0, FRONT, 30, 35.5], mat: 'ledgestone', top: 'bluestone', ext: true },   // front stoop top landing (from the wall centreline: covers the threshold)
+  { b: [28.55, 29.05, 0, FRONT, PWF, 35.5], mat: 'ledgestone', top: 'bluestone', ext: true },
+  { b: [20.3, 29.05, 0, 1.875, 43.5, 45.0], mat: 'ledgestone', top: 'bluestone', ext: true },    // lower landing (0.3 flare west)
+  { b: [19.0, 21.4, 0, 1.25, 45.0, 46.0], mat: 'ledgestone', top: 'bluestone', ext: true },      // bottom step, upper
+  { b: [17.9, 20.2, 0, 0.625, 46.0, 47.0], mat: 'ledgestone', top: 'bluestone', ext: true },     // bottom step, lower (on the drive)
   { b: [35.6, 39.4, 0, MID, -9.4, -8], mat: 'ledgestone', top: 'bluestone', ext: true },
 ];
 // Between floors: underside = lower-level ceiling
