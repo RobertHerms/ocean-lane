@@ -118,7 +118,11 @@ export const WALLS = [
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
   wz(0, GARAGE_Z, UP_BR_Z, HIX, [], EXT),                 // west end of the garage overhang
   wx(GARAGE_Z, 0, 20.75, LO, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' })], { ...EXT, yCuts: [SOFFIT_Y] }),   // garage front (lower storey); faces split at the soffit
-  wx(UP_BR_Z, 0, 20.35, HIX, [hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),   // bedrooms 2/3: upper storey, 2.1' out over the garage
+  // high sills are intentional: the photos show short twin-lite windows set high under the eave
+  wx(UP_BR_Z, 0, 20.35, HIX, [
+    hiWin(4.15, 8.15, 4.45, 7.3, { panes: [1, 1], xw: [0.06, 0.06], xh: 0.06, noSill: true }),    // Bedroom 2: twin lites, flat trim (per photos)
+    hiWin(12.95, 16.95, 4.45, 7.3, { panes: [1, 1], xw: [0.06, 0.06], xh: 0.06, noSill: true }),  // Bedroom 3 (nursery)
+  ], EXT),   // bedrooms 2/3: upper storey, 2.1' out over the garage; ends at 20.35 (free end runs on to x 20.6)
   wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T, yCuts: [FRONT] }),      // same thickness as the foyer wall it continues
   wx(30, 20.85, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
     win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], { ...EXT, yCuts: [FRONT] }),   // yCuts: split the faces there (closet below the landing)
