@@ -32,6 +32,8 @@ const DEFS = {
   paintedWood: { color: '#f3f1ec', roughness: 0.5 },
   cabinet: { color: '#ece5d4', roughness: 0.45 },
   counter: { color: '#ebe5d8', roughness: 0.25 },
+  counterBlack: { color: '#1d1d1f', roughness: 0.3 },     // kitchen top between the range and the fridge
+  pull: { color: '#e8d9a6', roughness: 0.35 },             // butter-yellow cabinet loop pulls
   cultured: { color: '#ece3cf', roughness: 0.18 },
   oak: { map: 'stair_tread.jpg', roughness: 0.35 },          // handrails: same stained oak as the treads (photo 51)
   porcelain: { color: '#f7f7f5', roughness: 0.1 },

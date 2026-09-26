@@ -850,8 +850,9 @@ function fixtures(b, lamps) {
 }
 
 // =============================================================== kitchen ===
-// Cream flat-panel cabinets with brass bar pulls, cream solid-surface tops with a rounded end,
-// stainless appliances (photos 3, 4, 37).
+// Cream flat-panel cabinets with butter-yellow loop pulls, cream solid-surface tops, a curved (concave)
+// north-west corner and a rounded end at the stair; the uppers run up to a painted soffit, and a boxed
+// bulkhead sits over the sink window. Stainless appliances (photos 3, 4, 37).
 function roundedEnd(len, depth, radius) {
   const s = new THREE.Shape();
   s.moveTo(0, 0); s.lineTo(len, 0); s.lineTo(len, depth - radius);
@@ -859,38 +860,65 @@ function roundedEnd(len, depth, radius) {
   s.lineTo(0, depth); s.lineTo(0, 0);
   return s;
 }
+// Plan outline [[x, z], ...] in world feet, extruded from y0 up to y1 (probe-lit).
+function planSolid(b, pts, mat, y0, y1) {
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z))), { depth: y1 - y0, bevelEnabled: false });
+  g.rotateX(Math.PI / 2);
+  b.prim(g, mat, 0, y1, 0);
+}
+// Points on a plan arc round (cx, cz), angle a0 → a1 (0 = +x, π/2 = +z).
+const arcPts = (cx, cz, r, a0, a1, n = 12) => Array.from({ length: n + 1 }, (_, i) => {
+  const a = a0 + (a1 - a0) * i / n;
+  return [cx + r * Math.cos(a), cz + r * Math.sin(a)];
+});
 function kitchen(b) {
-  const F = L.MAIN, CAB = 'cabinet', TOP = 'counter';
-  const baseH = 2.95, topT = 0.125, depth = 2.05, kick = 0.35;
+  const F = L.MAIN, C = L.MAIN_CEIL, CAB = 'cabinet', TOP = 'counter', KICK = 'paint:#3a3632', SOF = 'paint:#e6dcc4';
+  const baseH = 2.95, topT = 0.125, depth = 2.05, kick = 0.35, cTop = F + baseH;
   const W = 26.6 + 0.2;               // west wall face
   const N = 0.25;                     // north wall face
+  // corner piece from the wall corner out to (x1, z1), with a concave quarter-round of radius r there
+  const cove = (x1, z1, r) => [[W, N], [x1, N], ...arcPts(x1, z1, r, -Math.PI / 2, -Math.PI), [W, z1]];
+  // curved door: a 0.06 shell just in front of a cove of radius r, pull near its north edge
+  const curvedDoor = (cx, cz, r, y0, y1, py) => {
+    const g = 0.02 / r, a0 = -Math.PI / 2 - g, a1 = -Math.PI + g, rf = r - 0.06, a = a0 - 0.15 / r;
+    planSolid(b, [...arcPts(cx, cz, r - 0.003, a0, a1), ...arcPts(cx, cz, rf, a1, a0)], CAB, y0, y1);
+    loopPull(b, [cx + rf * Math.cos(a), py, cz + rf * Math.sin(a)], [0, 1, 0], [-Math.cos(a), 0, -Math.sin(a)]);
+  };
   const baseWest = (z0, z1, doors) => {
-    b.box(W, W + depth - 0.1, F + kick, F + baseH - topT, z0, z1, CAB, { skip: ['ny', 'nx'], collide: true });
-    b.box(W, W + depth - 0.2, F, F + kick, z0, z1, 'paint:#3a3632', { skip: ['ny', 'nx', 'py'] });
-    cabinetFronts(b, 'x+', W + depth - 0.1, z0, z1, F + kick, F + baseH - topT, doors, true);
+    b.box(W, W + depth - 0.1, F + kick, cTop - topT, z0, z1, CAB, { skip: ['ny', 'nx'], collide: true });
+    b.box(W, W + depth - 0.2, F, F + kick, z0, z1, KICK, { skip: ['ny', 'nx', 'py'] });
+    cabinetFronts(b, 'x+', W + depth - 0.1, z0, z1, F + kick, cTop - topT, doors, true);
   };
   const baseNorth = (x0, x1, doors) => {
-    b.box(x0, x1, F + kick, F + baseH - topT, N, N + depth - 0.1, CAB, { skip: ['ny', 'nz'], collide: true });
-    b.box(x0, x1, F, F + kick, N, N + depth - 0.2, 'paint:#3a3632', { skip: ['ny', 'nz', 'py'] });
-    cabinetFronts(b, 'z+', N + depth - 0.1, x0, x1, F + kick, F + baseH - topT, doors, true);
+    b.box(x0, x1, F + kick, cTop - topT, N, N + depth - 0.1, CAB, { skip: ['ny', 'nz'], collide: true });
+    b.box(x0, x1, F, F + kick, N, N + depth - 0.2, KICK, { skip: ['ny', 'nz', 'py'] });
+    cabinetFronts(b, 'z+', N + depth - 0.1, x0, x1, F + kick, cTop - topT, doors, true);
   };
-  // west run: corner base, range, pantry tower, fridge
-  baseWest(N + depth - 0.1, 3.0, 1);
-  range(b, W, 3.0, 5.5);
-  baseWest(5.5, 6.72, 1);                                   // base cabinet between the range and the fridge (photo 3)
-  fridge(b, W, 6.75, 9.65, F);
-  // north run: bases, sink under the window, dishwasher, rounded end cabinet at the stair
-  baseNorth(W, 30.3, 2);
+  // north-west corner: a curved base cabinet; its kick and top follow concentric arcs
+  const bx = 29.3, bz = 2.75;
+  planSolid(b, cove(bx, bz, 0.65), KICK, F, F + kick);
+  planSolid(b, cove(bx, bz, 0.55), CAB, F + kick, cTop - topT);
+  planSolid(b, cove(bx, bz, 0.37), TOP, cTop - topT, cTop);
+  curvedDoor(bx, bz, 0.55, F + kick + 0.02, cTop - topT - 0.02, cTop - topT - 0.35);
+  b.collider(W, bx, F, cTop, N, bz);
+  // west run: narrow base, range, base under a black top, the fridge enclosure's side panel, fridge
+  baseWest(bz, 3.4, 1);
+  range(b, W, 3.4, 5.9);
+  baseWest(5.9, 6.72, 1);
+  b.box(W, W + 2.4, F, C, 6.72, 6.78, CAB, { skip: ['nx', 'py'], collide: true });
+  fridge(b, W, 6.8, 9.65, F);
+  // north run: base with a drawer, sink base under the window, dishwasher, rounded end cabinet at the stair
+  baseNorth(bx, 30.3, 1);
   baseNorth(30.3, 32.6, 2);
   dishwasher(b, 32.6, 34.5, N, F);
   const xEnd = 34.5;
-  // countertops (west strip, corner, north run with sink cut-out)
-  const cTop = F + baseH;
-  const z1 = N + depth + 0.08;
-  b.box(W, W + depth + 0.08, cTop - topT, cTop, z1, 3.0, TOP, { skip: ['nx', 'pz'], dens: 7 });
+  // countertops (west strip, black top between range and fridge, north run with sink cut-out)
+  const z1 = N + depth + 0.08, xf = W + depth + 0.08;
+  b.box(W, xf, cTop - topT, cTop, bz, 3.4, TOP, { skip: ['nx', 'nz', 'pz'], dens: 7 });
+  b.box(W, xf, cTop - topT, cTop, 5.9, 6.72, 'counterBlack', { skip: ['nx'], dens: 7 });
   const sx0 = 30.55, sx1 = 32.35, sz0 = N + 0.3, sz1 = N + 1.75;
   const topPiece = (x0, x1, za, zb, skip) => b.box(x0, x1, cTop - topT, cTop, za, zb, TOP, { skip, dens: 7 });
-  topPiece(W, sx0, N, z1, ['nz', 'nx', 'px']);
+  topPiece(bx, sx0, N, z1, ['nz', 'nx', 'px']);
   topPiece(sx1, xEnd, N, z1, ['nz', 'nx', 'px']);
   topPiece(sx0, sx1, N, sz0, ['nz', 'nx', 'px']);
   topPiece(sx0, sx1, sz1, z1, ['nz', 'nx', 'px']);
@@ -901,27 +929,42 @@ function kitchen(b) {
   const endBody = new THREE.ExtrudeGeometry(roundedEnd(35.0 - xEnd - 0.08, z1 - N - 0.18, 0.4), { depth: baseH - topT - kick, bevelEnabled: false, curveSegments: 16 });
   endBody.rotateX(Math.PI / 2);
   b.prim(endBody, CAB, xEnd, cTop - topT, N);
-  b.box(xEnd, 34.85, F, F + kick, N, N + depth - 0.2, 'paint:#3a3632', { skip: ['ny', 'nz', 'py'] });
+  b.box(xEnd, 34.85, F, F + kick, N, N + depth - 0.2, KICK, { skip: ['ny', 'nz', 'py'] });
   b.collider(xEnd, 35.0, F, cTop, N, z1);
   // sink basin + faucet
   sinkInner(b, sx0, sx1, sz0, sz1, cTop - 0.75, cTop - topT);
   faucet(b, (sx0 + sx1) / 2, cTop, N + 0.12, 's');
-  // backsplash
+  // backsplash (black over the black top)
   b.box(W, 35.0, cTop, cTop + 0.3, N, N + 0.05, TOP, { skip: ['nz', 'ny'], dens: 6 });
-  b.box(W, W + 0.05, cTop, cTop + 0.3, N, 3.0, TOP, { skip: ['nx', 'ny'], dens: 6 });
-  // uppers: north wall either side of the window (30.6..33.4) and on the west wall
-  const uy0 = F + 4.5, uy1 = F + 7.5, ud = 1.1;
-  const upperN = (x0, x1, doors) => { b.box(x0, x1, uy0, uy1, N, N + ud, CAB, { skip: ['nz'] }); cabinetFronts(b, 'z+', N + ud, x0, x1, uy0 + 0.02, uy1 - 0.02, doors, false); };
-  const upperW = (z0, z1b, doors, y0 = uy0) => { b.box(W, W + ud, y0, uy1, z0, z1b, CAB, { skip: ['nx'] }); cabinetFronts(b, 'x+', W + ud, z0, z1b, y0 + 0.02, uy1 - 0.02, doors, false); };
-  upperN(W + ud, 30.25, 2);
-  upperN(33.75, 35.0, 1);
-  upperW(N, 3.0, 1);
-  upperW(3.0, 5.5, 2, F + 6.2);
-  upperW(5.5, 6.72, 1);
-  b.box(W, W + depth + 0.08, cTop - topT, cTop, 5.5, 6.72, TOP, { skip: ['nx'], dens: 7 });
-  b.box(W, W + 0.05, cTop, cTop + 0.3, 5.5, 6.72, TOP, { skip: ['nx', 'ny'], dens: 6 });
-  microwave(b, W, 3.05, 5.45, F + 4.6);
-  b.box(W, W + 2.4, F + 6.4, uy1, 6.72, 9.7, CAB, { skip: ['nx', 'ny'] });
+  b.box(W, W + 0.05, cTop, cTop + 0.3, N + 0.05, 3.4, TOP, { skip: ['nx', 'ny'], dens: 6 });
+  b.box(W, W + 0.05, cTop, cTop + 0.3, 5.9, 6.72, 'counterBlack', { skip: ['nx', 'ny'], dens: 6 });
+  // uppers: up to a soffit that fills the last few inches flush to the ceiling; curved corner, bulkhead
+  // over the window, rounded end at the stair
+  const uy0 = F + 4.5, uy1 = F + 7.75, ud = 1.1;
+  const upperN = (x0, x1, doors) => { b.box(x0, x1, uy0, uy1, N, N + ud, CAB, { skip: ['nz', 'py'] }); cabinetFronts(b, 'z+', N + ud, x0, x1, uy0 + 0.02, uy1 - 0.02, doors, false); };
+  const upperW = (z0, z1b, doors, y0 = uy0) => { b.box(W, W + ud, y0, uy1, z0, z1b, CAB, { skip: ['nx', 'py'] }); cabinetFronts(b, 'x+', W + ud, z0, z1b, y0 + 0.02, uy1 - 0.02, doors, false); };
+  const ux = 28.5, uz = 1.95;
+  planSolid(b, cove(ux, uz, 0.6), CAB, uy0, uy1);
+  planSolid(b, cove(ux, uz, 0.6), SOF, uy1, C);
+  curvedDoor(ux, uz, 0.6, uy0 + 0.04, uy1 - 0.04, uy0 + 0.35);
+  upperW(uz, 3.4, 2);
+  upperW(3.4, 5.9, 2, F + 6.2);
+  upperW(5.9, 6.72, 1);
+  microwave(b, W, 3.45, 5.85, F + 4.6);
+  b.box(W, W + ud, uy1, C, uz, 6.72, SOF, { skip: ['nx', 'py', 'ny', 'nz', 'pz'] });
+  upperN(ux, 30.25, 2);
+  b.box(ux, 30.25, uy1, C, N, N + ud, SOF, { skip: ['nz', 'py', 'ny', 'nx', 'px'] });
+  b.box(30.25, 33.6, F + 6.95, C, N, N + ud, SOF, { skip: ['nz', 'py', 'px'] });          // bulkhead over the window
+  for (const [mat, y0, y1] of [[CAB, uy0, uy1], [SOF, uy1, C]]) {                          // rounded east upper + soffit
+    const g = new THREE.ExtrudeGeometry(roundedEnd(35.0 - 33.6, ud, 0.45), { depth: y1 - y0, bevelEnabled: false, curveSegments: 16 });
+    g.rotateX(Math.PI / 2);
+    b.prim(g, mat, 33.6, y1, N);
+  }
+  cabinetFronts(b, 'z+', N + ud, 33.6, 34.55, uy0 + 0.02, uy1 - 0.02, 2, false);
+  // cabinet over the fridge (2.4 deep, two doors) and its soffit
+  b.box(W, W + 2.4, F + 6.4, uy1, 6.78, 9.7, CAB, { skip: ['nx', 'ny', 'py'] });
+  cabinetFronts(b, 'x+', W + 2.4, 6.78, 9.7, F + 6.42, uy1 - 0.02, 2, false);
+  b.box(W, W + 2.4, uy1, C, 6.78, 9.7, SOF, { skip: ['nx', 'py', 'ny', 'nz'] });
 }
 function cabinetFronts(b, facing, face, a0, a1, y0, y1, doors, drawer) {
   const gap = 0.02, depth = 0.06;
@@ -930,12 +973,8 @@ function cabinetFronts(b, facing, face, a0, a1, y0, y1, doors, drawer) {
     else b.box(s0, s1, t0, t1, face, face + depth, 'cabinet', { skip: ['nz'], dens: 7, bevel: 0.014 });
   };
   const pull = (s, t, horiz) => {
-    const L2 = horiz ? 0.35 : 0.3;
-    if (facing === 'x+') {
-      if (horiz) b.mbox(face + depth, face + depth + 0.07, t - 0.015, t + 0.015, s - L2 / 2, s + L2 / 2, 'brass');
-      else b.mbox(face + depth, face + depth + 0.07, t - L2 / 2, t + L2 / 2, s - 0.015, s + 0.015, 'brass');
-    } else if (horiz) b.mbox(s - L2 / 2, s + L2 / 2, t - 0.015, t + 0.015, face + depth, face + depth + 0.07, 'brass');
-    else b.mbox(s - 0.015, s + 0.015, t - L2 / 2, t + L2 / 2, face + depth, face + depth + 0.07, 'brass');
+    const out = facing === 'x+' ? [1, 0, 0] : [0, 0, 1];
+    loopPull(b, facing === 'x+' ? [face + depth, t, s] : [s, t, face + depth], horiz ? [out[2], 0, out[0]] : [0, 1, 0], out);
   };
   let top = y1;
   const w = (a1 - a0) / doors;
@@ -950,6 +989,14 @@ function cabinetFronts(b, facing, face, a0, a1, y0, y1, doors, drawer) {
     const s = doors === 2 ? (i === 0 ? s1 - 0.15 : s0 + 0.15) : s1 - 0.15;
     pull(s, drawer ? top - 0.3 : y0 + 0.35, false);
   }
+}
+// D-shaped loop pull: a round rod bent into a squared U standing 0.07 off the door; c = centre on the
+// door face, along = its length, out = the door's outward normal.
+function loopPull(b, c, along, out, len = 0.33) {
+  const h = len / 2, d = 0.07;
+  const P = (a, o) => new THREE.Vector3(c[0] + along[0] * a + out[0] * o, c[1] + along[1] * a + out[1] * o, c[2] + along[2] * a + out[2] * o);
+  const path = new THREE.CatmullRomCurve3([P(-h, -0.005), P(-h, d * 0.6), P(-h + 0.035, d), P(h - 0.035, d), P(h, d * 0.6), P(h, -0.005)], false, 'centripetal');
+  b.mesh(new THREE.TubeGeometry(path, 24, 0.0175, 6), 'pull');
 }
 function range(b, W, z0, z1) {
   const F = L.MAIN;
