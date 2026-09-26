@@ -97,6 +97,8 @@ export const ROOMS = [
 const win = (a0, a1, b0, b1, extra = {}) => ({ a0, a1, b0, b1, kind: 'window', ...extra });
 const door = (a0, a1, base, extra = {}) => ({ a0, a1, b0: base, b1: base + DOOR_H + 0.05, kind: 'door', ...extra });
 const open = (a0, a1, b0, b1, extra = {}) => ({ a0, a1, b0, b1, kind: 'open', ...extra });
+// a recess in one face of a wall (side ±1 on its normal), depth deep; see wallNiche() in house.js
+const niche = (a0, a1, b0, b1, side, extra = {}) => ({ a0, a1, b0, b1, kind: 'niche', side, ...extra });
 const wx = (z, x0, x1, y, ops = [], extra = {}) => ({ x0, z0: z, x1, z1: z, y, ops, ...extra });
 const wz = (x, z0, z1, y, ops = [], extra = {}) => ({ x0: x, z0, x1: x, z1, y, ops, ...extra });
 const EXT = { t: EXT_T, ext: true };
@@ -106,7 +108,7 @@ const loWin = (a0, a1, sill = 4.0, head = 4.0 + 57 / 12) => win(a0, a1, LOW + si
 export const WALLS = [
   // ---- exterior ----
   wx(0, 0, 35, ALL, [loWin(21.7, 23.3), loWin(30.5, 33.5),
-    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7), hiWin(30.6, 33.4, 3.6, 6.6, { overCounter: true })], EXT),   // kitchen sink window: sill 8" over the counter
+    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7, { tiled: 'tileWall', frosted: true }), hiWin(30.6, 33.4, 3.6, 6.6, { overCounter: true })], EXT),   // hall-bath window over the tub: tiled in, obscure glass   // kitchen sink window: sill 8" over the counter
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
   wx(GARAGE_Z, 0, 20.75, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
     hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
@@ -145,7 +147,7 @@ export const WALLS = [
   wx(12.3, 15.5, 19.3, HI),
   wx(11.7, 19.3, 28.8, HI, [door(21.1, 23.6, MAIN)]),      // runs on past the fridge enclosure so the hall wall is one plane
   wz(28.8, 9.9, 11.3, HI),                                 // dining-room face of the fridge enclosure (butts into the header)
-  wz(26.6, 0, 11.7, HI),
+  wz(26.6, 0, 11.7, HI, [niche(1.0, 2.0, MAIN + 3.6, MAIN + 5.6, -1, { depth: 0.33, lining: 'tileWall', shelves: [MAIN + 4.3, MAIN + 5.0] })]),   // tile niche at the tub's east end
   wx(9.7, 32.2, 45, HI, [open(35.3, 42.8, MAIN + 2.65, MAIN + 6.67, { passThrough: true })]),
   wz(32.2, 9.7, 11.3, HI),                                 // pier: its end shows flush with the header's south face
   // header over the plain drywall-wrapped doorway from the dining room to the kitchen, beside the fridge
@@ -353,8 +355,10 @@ export const FURNITURE = [
   { type: 'shower', r: [15.7, 18.8, 5.4, 8.35], base: MAIN, frame: '#b39556' },
   // Bath 1
   { type: 'tub', r: [21.5, 26.4, 0.2, 2.75], base: MAIN },
-  { type: 'toilet', x: 22.5, z: 4.6, base: MAIN, face: 'e' },
-  { type: 'vanity', r: [19.5, 21.2, 7.1, 11.2], base: MAIN, face: 'e', top: 'granite', cab: '#f2f1ec', mirror: true },
+  { type: 'toilet', x: 22.5, z: 4.6, base: MAIN, face: 'e', button: true },
+  { type: 'vanity', r: [19.5, 21.2, 7.1, 11.2], base: MAIN, face: 'e', top: 'marbleWhite', cab: '#f2f1ec', shaker: true, mirror: 'cabinet', faucet: 'widespread' },
+  { type: 'towelRing', x: 20.4, y: MAIN + 4.4, z: 6.7, face: 's' },                // on the return wall north of the vanity
+  { type: 'robeHooks', x: 24.6, y: MAIN + 5.5, z: 11.5, face: 'n' },                // east of the door
   // Kitchen
   { type: 'kitchen' },
   { type: 'table', r: [41.07, 44.67, 3.25, 6.45], base: MAIN, wood: '#c9a26a', chairs: 4, chair: 'wheat', against: 'e' },   // pushed to the window wall

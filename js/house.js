@@ -83,16 +83,17 @@ function walls(b, glass, sliders) {
       }
     }
     const xs = [...cuts].sort((p, q) => p - q);
-    const opEdges = new Set();
-    for (const op of w.ops) { opEdges.add(op.a0); opEdges.add(op.a1); }
+    const opEdges = new Set(), niches = w.ops.filter(op => op.kind === 'niche');   // a niche cuts only its own face
+    for (const op of w.ops) if (op.kind !== 'niche') { opEdges.add(op.a0); opEdges.add(op.a1); }
     for (let i = 0; i < xs.length - 1; i++) {
       const p = xs[i], q = xs[i + 1];
       if (q - p < 1e-3) continue;
       const mid = (p + q) / 2;
-      const covering = w.ops.filter(op => op.a0 <= mid && op.a1 >= mid);
+      const covering = w.ops.filter(op => op.kind !== 'niche' && op.a0 <= mid && op.a1 >= mid);
+      const nichesHere = niches.filter(op => op.a0 <= mid && op.a1 >= mid);
       let ranges = [w.y.slice()];
       for (const op of covering) ranges = subtract(ranges, op.b0, op.b1);
-      for (const cut of [L.MAIN - 0.1, L.MAIN + 3, ...(w.yCuts || [])]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
+      for (const cut of [L.MAIN - 0.1, L.MAIN + 3, ...(w.yCuts || []), ...nichesHere.flatMap(op => [op.b0, op.b1])]) ranges = ranges.flatMap(([s, e]) => (s < cut - 1e-6 && e > cut + 1e-6 ? [[s, cut], [cut, e]] : [[s, e]]));
       for (const [s, e0] of ranges) {
         if (e0 - s < 1e-3) continue;
         // a free wall end runs on by half its thickness to close the corner; where another wall carries
@@ -106,6 +107,7 @@ function walls(b, glass, sliders) {
         if (e - s < 1e-3) continue;
         const ym = (s + Math.min(ep, eq)) / 2;
         for (const side of [-1, 1]) {
+          if (nichesHere.some(op => op.side === side && s >= op.b0 - 1e-6 && e0 <= op.b1 + 1e-6)) continue;
           const probe = wp(alongX, c, mid, side * (t / 2 + 0.25), ym);
           const r = roomAt(probe[0], probe[2], ym);
           const mat = paintFor(r, ym);
@@ -115,7 +117,7 @@ function walls(b, glass, sliders) {
         }
         // end / jamb faces
         const jambMat = a => {
-          const op = w.ops.find(o2 => (o2.a0 === a || o2.a1 === a) && o2.b0 < e && o2.b1 > s);
+          const op = w.ops.find(o2 => o2.kind !== 'niche' && (o2.a0 === a || o2.a1 === a) && o2.b0 < e && o2.b1 > s);
           if (!op) return null;
           return op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, a, 0, 0)), op.b0 + 1), op.b0 + 1) : TRIM;
         };
@@ -157,6 +159,7 @@ function walls(b, glass, sliders) {
       else if (op.kind === 'door') { (op.unit ? unitCasing : casings)(b, w, op); if (op.bypass) bypassTrack(b, w, op); }
       else if (op.passThrough) passThroughTrim(b, w, op);
       else if (op.garageDoor) garageTrim(b, w, op);
+      else if (op.kind === 'niche') wallNiche(b, glass, w, op);
     }
   }
 }
@@ -196,6 +199,26 @@ function capTop(b, w) {
       b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), y - 0.12, y, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), 'oak',
         { skip: [alongX ? (s > 0 ? 'nz' : 'pz') : (s > 0 ? 'nx' : 'px')], dens: 8, bevel: 0.02 });
     }
+  }
+}
+// A recessed niche in one face of a wall (op.side: ±1 on the wall's normal), op.depth deep and lined with
+// op.lining, a white pencil trim round the opening and glass shelves at the heights in op.shelves.
+function wallNiche(b, glass, w, op) {
+  const { alongX, t, c } = wallInfo(w), s = op.side, f = s * t / 2, k = s * (t / 2 - op.depth), m = op.lining;
+  const P = (a, o, y) => wp(alongX, c, a, o, y), along = d => (alongX ? [d, 0, 0] : [0, 0, d]);
+  b.poly([P(op.a0, k, op.b0), P(op.a1, k, op.b0), P(op.a1, k, op.b1), P(op.a0, k, op.b1)], m, { n: wn(alongX, s), dens: 6 });   // back
+  b.poly([P(op.a0, k, op.b1), P(op.a1, k, op.b1), P(op.a1, f, op.b1), P(op.a0, f, op.b1)], m, { n: [0, -1, 0], dens: 6 });
+  b.poly([P(op.a0, k, op.b0), P(op.a1, k, op.b0), P(op.a1, f, op.b0), P(op.a0, f, op.b0)], m, { n: [0, 1, 0], dens: 6 });
+  b.poly([P(op.a0, k, op.b0), P(op.a0, f, op.b0), P(op.a0, f, op.b1), P(op.a0, k, op.b1)], m, { n: along(1), dens: 6 });
+  b.poly([P(op.a1, k, op.b0), P(op.a1, f, op.b0), P(op.a1, f, op.b1), P(op.a1, k, op.b1)], m, { n: along(-1), dens: 6 });
+  const o = s * (t / 2 + 0.018);                                                                  // pencil trim
+  for (const [a0, y0, a1, y1] of [[op.a0, op.b0, op.a1, op.b0], [op.a0, op.b1, op.a1, op.b1], [op.a0, op.b0, op.a0, op.b1], [op.a1, op.b0, op.a1, op.b1]]) {
+    beam(b, P(a0, o, y0), P(a1, o, y1), 0.05, 0, 'porcelain', { round: true });
+  }
+  for (const y of op.shelves || []) {                                                             // glass shelves
+    glass.push({ pts: [P(op.a0, k, y), P(op.a1, k, y), P(op.a1, f, y), P(op.a0, f, y)], n: [0, 1, 0] });
+    const e0 = P(op.a0, f - s * 0.025, y - 0.02), e1 = P(op.a1, f - s * 0.005, y);
+    b.mbox(Math.min(e0[0], e1[0]), Math.max(e0[0], e1[0]), y - 0.02, y, Math.min(e0[2], e1[2]), Math.max(e0[2], e1[2]), 'paint:#cfe0dc');
   }
 }
 // The collinear wall (if any) that continues past `pos` in direction `dir` over heights s..e.
@@ -394,7 +417,8 @@ function windowUnit(b, glass, w, op, sliders) {
   }
   const inSide = windowInSide(w, op);
   if (op.slider) return sliderUnit(b, glass, w, op, inSide, sliders);
-  const fw = 0.16, depth = 0.34;
+  // tiled: a window in a tiled shower wall, set further out so the tile returns into the opening
+  const fw = 0.16, depth = op.tiled ? 0.12 : 0.34, sh = op.tiled ? -0.15 : 0;
   const f0 = inSide * -0.02, f1 = inSide * (depth - 0.02);
   const frame = (s0, s1, y0, y1, d0 = f0, d1 = f1) => {
     const p0 = P(s0, d0, y0), p1 = P(s1, d1, y1);
@@ -414,15 +438,22 @@ function windowUnit(b, glass, w, op, sliders) {
     if (k > 0) frame(s0 - 0.06, s0 + 0.06, op.b0, op.b1);
     const fixed = op.panes && weights[k] === big;
     const ys = h > 2.6 && !fixed
-      ? [[op.b0 + fw, op.b0 + h / 2 + 0.03, inSide * 0.2], [op.b0 + h / 2 - 0.03, op.b1 - fw, inSide * 0.08]]
-      : [[op.b0 + fw, op.b1 - fw, inSide * 0.14]];
+      ? [[op.b0 + fw, op.b0 + h / 2 + 0.03, inSide * (0.2 + sh)], [op.b0 + h / 2 - 0.03, op.b1 - fw, inSide * (0.08 + sh)]]
+      : [[op.b0 + fw, op.b1 - fw, inSide * (0.14 + sh)]];
     for (const [y0, y1, d] of ys) {
       const dd0 = d - inSide * 0.05, dd1 = d + inSide * 0.05;
       frame(s0, s0 + sash, y0, y1, dd0, dd1); frame(s1 - sash, s1, y0, y1, dd0, dd1);
       frame(s0, s1, y0, y0 + sash, dd0, dd1); frame(s0, s1, y1 - sash, y1, dd0, dd1);
-      glass.push({ pts: [P(s0 + sash, d, y0 + sash), P(s1 - sash, d, y0 + sash), P(s1 - sash, d, y1 - sash), P(s0 + sash, d, y1 - sash)], n: wn(alongX, inSide) });
+      glass.push({ pts: [P(s0 + sash, d, y0 + sash), P(s1 - sash, d, y0 + sash), P(s1 - sash, d, y1 - sash), P(s0 + sash, d, y1 - sash)], n: wn(alongX, inSide), frosted: !!op.frosted });
     }
   }
+  if (op.tiled) {
+    // the wall tile (op.tiled) returns into the opening - jambs, head and sill - back to the frame; no
+    // casing, stool or blind
+    const zi = f1, zt = inSide * (t / 2 + 0.005), m = op.tiled, along = s => (alongX ? [s, 0, 0] : [0, 0, s]);
+    for (const [a, s] of [[op.a0 + 0.005, 1], [op.a1 - 0.005, -1]]) b.poly([P(a, zi, op.b0), P(a, zt, op.b0), P(a, zt, op.b1), P(a, zi, op.b1)], m, { n: along(s), dens: 6 });
+    for (const [y, n] of [[op.b1 - 0.005, [0, -1, 0]], [op.b0 + 0.005, [0, 1, 0]]]) b.poly([P(op.a0, zi, y), P(op.a1, zi, y), P(op.a1, zt, y), P(op.a0, zt, y)], m, { n, dens: 6 });
+  } else {
   // interior casing, stool and apron (cw: narrower casing that stops at a bow window's joints). Over a
   // countertop (sill within a foot of it) there's no apron and only a narrow stool: the backsplash is below
   const o0 = inSide * t / 2, o1 = inSide * (t / 2 + 0.055), W = 0.29;
@@ -436,6 +467,7 @@ function windowUnit(b, glass, w, op, sliders) {
   const bs = inSide * (t / 2 - 0.12);
   const p0 = P(op.a0 + 0.05, bs - inSide * 0.08, op.b1 - 0.42), p1 = P(op.a1 - 0.05, bs + inSide * 0.08, op.b1 - 0.02);
   b.box(Math.min(p0[0], p1[0]), Math.max(p0[0], p1[0]), op.b1 - 0.42, op.b1 - 0.02, Math.min(p0[2], p1[2]), Math.max(p0[2], p1[2]), 'blind', { dens: 8 });
+  }
   // exterior trim
   const e0 = -inSide * t / 2, e1 = -inSide * (t / 2 + 0.07);
   const [X0, X1] = op.xw || [0.35, 0.35], k0 = op.xw ? 0 : 0.05, k1 = op.xw ? 0 : 0.05;
@@ -1486,6 +1518,19 @@ function sinkInner(b, x0, x1, z0, z1, y0, y1) {
   b.poly([[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]], 'porcelain', { ...o, n: [-1, 0, 0] });
   b.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 16), 'stainless', (x0 + x1) / 2, y0 + 0.01, (z0 + z1) / 2);
 }
+// Widespread bathroom faucet on a vanity deck (the basin toward -x): a centre spout arching out over the
+// basin and two lever handles 0.33 either side along z; brushed nickel.
+function widespreadFaucet(b, x, y, z, mat = 'nickel') {
+  b.prim(new THREE.CylinderGeometry(0.07, 0.08, 0.05, 16), mat, x, y + 0.025, z);
+  b.prim(new THREE.CylinderGeometry(0.04, 0.045, 0.38, 12), mat, x, y + 0.24, z);
+  b.mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(x, y + 0.4, z), V3(x, y + 0.62, z), V3(x - 0.42, y + 0.5, z)), 16, 0.035, 8), mat);
+  for (const s of [-1, 1]) {
+    const hz = z + s * 0.33;
+    b.prim(new THREE.CylinderGeometry(0.06, 0.07, 0.05, 16), mat, x, y + 0.025, hz);
+    b.prim(new THREE.CylinderGeometry(0.035, 0.04, 0.14, 12), mat, x, y + 0.12, hz);
+    beam(b, [x, y + 0.17, hz], [x - 0.05, y + 0.24, hz + s * 0.2], 0.03, 0, mat, { round: true });
+  }
+}
 function faucet(b, x, y, z, face, mat = 'chrome') {
   const dir = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[face];
   b.prim(new THREE.CylinderGeometry(0.08, 0.1, 0.08, 16), mat, x, y + 0.04, z);
@@ -1611,23 +1656,33 @@ const FURN = {
     const face = x0 + 0.08;
     const n = (z1 - z0) > 3.6 ? 3 : 2;
     const w = (z1 - z0) / n;
+    // a door or drawer front; shaker: stiles and rails framing a recessed centre panel
+    const front = (y0, y1, za, zb, rail) => {
+      b.box(face - 0.05, face, y0, y1, za, zb, cab, { skip: ['px'], dens: 6 });
+      if (!f.shaker) return;
+      const k = Math.min(rail, (zb - za) / 4, (y1 - y0) / 4);
+      for (const [p0, p1, q0, q1] of [[y0, y0 + k, za, zb], [y1 - k, y1, za, zb], [y0 + k, y1 - k, za, za + k], [y0 + k, y1 - k, zb - k, zb]]) b.mbox(face - 0.07, face - 0.05, p0, p1, q0, q1, cab);
+    };
     for (let i = 0; i < n; i++) {
       const a = z0 + i * w + 0.03, a2 = a + w - 0.06;
       if ((n === 3 && i === 1) || n === 2) {
-        b.box(face - 0.05, face, F + 0.4, F + H - topT - 0.45, a, a2, cab, { skip: ['px'], dens: 6 });
-        const pz = n === 2 ? (i === 0 ? a2 - 0.15 : a + 0.15) : a2 - 0.15;
-        b.mbox(face - 0.12, face - 0.05, F + 1.6, F + 2.0, pz - 0.015, pz + 0.015, 'nickel');
-        b.box(face - 0.05, face, F + H - topT - 0.4, F + H - topT - 0.05, a, a2, cab, { skip: ['px'], dens: 6 });
+        // doors (with shaker fronts, a pair between the drawer stacks), a false drawer front over them
+        const zm = (a + a2) / 2, leaves = f.shaker && n === 3 ? [[a, zm - 0.01, zm - 0.12], [zm + 0.01, a2, zm + 0.12]] : [[a, a2, n === 2 ? (i === 0 ? a2 - 0.15 : a + 0.15) : a2 - 0.15]];
+        for (const [la, lb, pz] of leaves) {
+          front(F + 0.4, F + H - topT - 0.45, la, lb, 0.18);
+          b.mbox(face - 0.12 - (f.shaker ? 0.02 : 0), face - 0.05 - (f.shaker ? 0.02 : 0), F + 1.6, F + 2.0, pz - 0.015, pz + 0.015, 'nickel');
+        }
+        front(F + H - topT - 0.4, F + H - topT - 0.05, a, a2, 0.08);
       } else {
         for (let r = 0; r < 4; r++) {
-          const y0 = F + 0.4 + r * 0.53, y1 = y0 + 0.49;
-          b.box(face - 0.05, face, y0, y1, a, a2, cab, { skip: ['px'], dens: 6 });
-          b.mbox(face - 0.12, face - 0.05, (y0 + y1) / 2 - 0.015, (y0 + y1) / 2 + 0.015, (a + a2) / 2 - 0.2, (a + a2) / 2 + 0.2, 'nickel');
+          const y0 = F + 0.4 + r * 0.53, y1 = y0 + 0.49, px = face - 0.05 - (f.shaker ? 0.02 : 0);
+          front(y0, y1, a, a2, 0.09);
+          b.mbox(px - 0.07, px, (y0 + y1) / 2 - 0.015, (y0 + y1) / 2 + 0.015, (a + a2) / 2 - 0.2, (a + a2) / 2 + 0.2, 'nickel');
         }
       }
     }
     // top with an undermount oval basin
-    const top = f.top === 'granite' ? 'granite' : 'cultured';
+    const top = f.top || 'cultured';
     const cz = (z0 + z1) / 2, cy = F + H;
     const bw = 1.55, bd = 1.05, bx = (x0 + x1) / 2 - 0.1;
     b.box(x0 - 0.05, x1, cy - topT, cy, z0 - 0.05, z1 + 0.05, top, { skip: ['py', 'px'], dens: 7 });
@@ -1640,9 +1695,17 @@ const FURN = {
     bowl.scale(bd / 2, 0.45, bw / 2);
     bowl.scale(-1, 1, 1);
     b.prim(bowl, 'porcelain', bx, cy - topT + 0.01, cz);
-    faucet(b, x1 - 0.35, cy, cz, 'w', 'nickel');
+    if (f.faucet === 'widespread') widespreadFaucet(b, x1 - 0.35, cy, cz);
+    else faucet(b, x1 - 0.35, cy, cz, 'w', 'nickel');
     b.box(x1 - 0.06, x1, cy, cy + 0.33, z0 - 0.05, z1 + 0.05, top, { skip: ['px', 'ny'], dens: 6 });
-    if (f.mirror) {
+    if (f.mirror === 'cabinet') {
+      // frameless three-door medicine cabinet the vanity's width, 0.12 proud: mirror doors with two thin
+      // seams, a polished nickel edge band round it; no light over it (the bath is lit by its cans)
+      const my0 = cy + 0.33 + 0.5, my1 = cy + 3.6, fx = x1 - 0.12;
+      b.box(fx, x1, my0, my1, z0, z1, 'nickel', { skip: ['px', 'nx'], dens: 8 });
+      mirrors.push({ pts: [[fx - 0.002, my0, z0], [fx - 0.002, my0, z1], [fx - 0.002, my1, z1], [fx - 0.002, my1, z0]], n: [-1, 0, 0] });
+      for (const k of [1, 2]) { const zs = z0 + (z1 - z0) * k / 3; b.mbox(fx - 0.007, fx, my0, my1, zs - 0.006, zs + 0.006, 'paint:#3a3c3e'); }
+    } else if (f.mirror) {
       const my0 = cy + 0.6, my1 = cy + 3.9;
       mirrors.push({ pts: [[x1 - 0.03, my0, z0], [x1 - 0.03, my0, z1], [x1 - 0.03, my1, z1], [x1 - 0.03, my1, z0]], n: [-1, 0, 0] });
       b.box(x1 - 0.06, x1 - 0.02, my1 + 0.1, my1 + 0.3, z0 + 0.3, z1 - 0.3, 'nickel', { skip: ['px'] });
@@ -1662,6 +1725,11 @@ const FURN = {
       geo.rotateY(-ang); geo.translate(x, F, z);
       b.mesh(geo, 'porcelain');
     }
+    if (f.button) {                                     // round chrome push button on the tank lid
+      const btn = new THREE.CylinderGeometry(0.05, 0.05, 0.025, 20); btn.translate(-0.62, 2.672, 0);
+      btn.rotateY(-ang); btn.translate(x, F, z);
+      b.mesh(btn, 'chrome');
+    }
     b.collider(x - 0.9, x + 0.9, F, F + 2.6, z - 0.9, z + 0.9);
   },
   tub(b, f) {
@@ -1671,23 +1739,68 @@ const FURN = {
     b.poly([[x0 + 0.1, F + 0.35, z0 + 0.1], [x1 - 0.1, F + 0.35, z0 + 0.1], [x1 - 0.1, F + 0.35, z1 - 0.2], [x0 + 0.1, F + 0.35, z1 - 0.2]], 'porcelain', { n: [0, 1, 0], dens: 7 });
     b.poly([[x0 + 0.1, F + 0.35, z1 - 0.2], [x1 - 0.1, F + 0.35, z1 - 0.2], [x1 - 0.1, F + H - 0.12, z1 - 0.2], [x0 + 0.1, F + H - 0.12, z1 - 0.2]], 'porcelain', { n: [0, 0, -1], dens: 7 });
     b.collider(x0, x1, F, F + H, z0, z1);
-    // 12x24 marble-look tile surround to 7' on the three alcove walls (around the window)
-    const t0 = F + H, t1 = F + 7.3;
-    const wall = (pts, n) => b.poly(pts, 'tileWall', { n, dens: 6 });
-    const zN = 0.25 + 0.005, xW = 21.3 + 0.2 + 0.005, xE = 26.6 - 0.2 - 0.005;
-    const wy0 = L.MAIN + 4, wa0 = 22.8 - 0.3, wa1 = 25.9 + 0.3;
-    wall([[xW, t0, zN], [wa0, t0, zN], [wa0, t1, zN], [xW, t1, zN]], [0, 0, 1]);
-    wall([[wa1, t0, zN], [xE, t0, zN], [xE, t1, zN], [wa1, t1, zN]], [0, 0, 1]);
-    wall([[wa0, t0, zN], [wa1, t0, zN], [wa1, wy0 - 0.37, zN], [wa0, wy0 - 0.37, zN]], [0, 0, 1]);
-    wall([[xW, t0, zN], [xW, t0, z1], [xW, t1, z1], [xW, t1, zN]], [1, 0, 0]);
-    wall([[xE, t0, zN], [xE, t0, z1], [xE, t1, z1], [xE, t1, zN]], [-1, 0, 0]);
-    // curtain rod + gathered curtain (photo 11)
-    beam(b, [xW, F + 6.9, z1 + 0.05], [xE, F + 6.9, z1 + 0.05], 0.06, 0, 'chrome', { round: true });
-    const cw = 1.8, folds = 9, geo = new THREE.PlaneGeometry(cw, 5.6, folds * 4, 1);
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getX(i) / cw * folds * Math.PI * 2) * 0.09);
-    geo.computeVertexNormals();
-    b.prim(geo, 'curtain', x0 + 1.1, F + 4.05, z1 + 0.05, 0);
+    // 12x24 marble-look tile surround to 7' on the three alcove walls, round the window (the tile returns
+    // into it, see windowUnit) and the niche in the east end wall
+    const t0 = F + H, t1 = F + 7.3, zN = 0.25 + 0.005, xW = 21.3 + 0.2 + 0.005, xE = 26.6 - 0.2 - 0.005;
+    const holes = (alongX, cc, side) => L.WALLS.flatMap(w => {
+      const q = wallInfo(w);
+      if (q.alongX !== alongX || Math.abs(q.c + side * q.t / 2 - cc) > 0.02) return [];
+      return w.ops.filter(op => op.kind === 'window' || (op.kind === 'niche' && op.side === side)).map(op => [op.a0, op.a1, op.b0, op.b1]);
+    });
+    const tile = (alongX, cc, a0, a1, n, hs) => {
+      for (const [p0, p1, q0, q1] of rectMinus([a0, a1, t0, t1], hs)) {
+        if (p1 - p0 < 1e-3 || q1 - q0 < 1e-3) continue;
+        const P = (a, y) => (alongX ? [a, y, cc] : [cc, y, a]);
+        b.poly([P(p0, q0), P(p1, q0), P(p1, q1), P(p0, q1)], 'tileWall', { n, dens: 6 });
+      }
+    };
+    tile(true, zN, xW, xE, [0, 0, 1], holes(true, 0.25, 1));
+    tile(false, xW, zN, z1, [1, 0, 0], holes(false, 21.5, 1));
+    tile(false, xE, zN, z1, [-1, 0, 0], holes(false, 26.4, -1));
+    // plumbing wall (west end): spout, valve with a single lever, shower arm and head; brushed nickel
+    const zc = (z0 + z1 - 0.15) / 2, NI = 'nickel';
+    b.prim(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 20), NI, xW + 0.015, F + 2.1, zc, 0, { rz: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.05, 0.065, 0.45, 16), NI, xW + 0.225, F + 2.1, zc, 0, { rz: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.045, 0.045, 0.1, 12), NI, xW + 0.4, F + 2.05, zc);
+    b.prim(new THREE.CylinderGeometry(0.275, 0.275, 0.03, 32), NI, xW + 0.015, F + 3.3, zc, 0, { rz: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 16), NI, xW + 0.09, F + 3.3, zc, 0, { rz: Math.PI / 2 });
+    beam(b, [xW + 0.14, F + 3.3, zc], [xW + 0.2, F + 3.27, zc + 0.32], 0.035, 0, NI, { round: true });
+    b.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 20), NI, xW + 0.015, F + 6.4, zc, 0, { rz: Math.PI / 2 });
+    beam(b, [xW, F + 6.4, zc], [xW + 0.55, F + 6.22, zc], 0.07, 0, NI, { round: true });
+    b.prim(new THREE.CylinderGeometry(0.2, 0.12, 0.1, 24), NI, xW + 0.62, F + 6.16, zc, 0, { rz: 0.6 });
+    // small white triangular shelf in the back (north-east) corner at F + 3.4
+    const corner = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(-0.55, 0), new THREE.Vector2(0, 0.55)]), { depth: 0.05, bevelEnabled: false });
+    corner.rotateX(Math.PI / 2);
+    b.prim(corner, 'porcelain', xE, F + 3.4, zN);
+    // tension rod (brushed nickel), a grey ogee curtain and a plain white liner behind it, a little longer,
+    // gathered toward the west end (photo 11)
+    beam(b, [xW, F + 6.9, z1 + 0.05], [xE, F + 6.9, z1 + 0.05], 0.06, 0, NI, { round: true });
+    const drape = (height, amp, mat, cy, cz) => {
+      const cw = 1.8, folds = 9, geo = new THREE.PlaneGeometry(cw, height, folds * 4, 1);
+      const pos = geo.attributes.position, uv = geo.attributes.uv;
+      for (let i = 0; i < pos.count; i++) { pos.setZ(i, Math.sin(pos.getX(i) / cw * folds * Math.PI * 2) * amp); uv.setXY(i, uv.getX(i) * cw, uv.getY(i) * height); }
+      geo.computeVertexNormals();
+      b.prim(geo, mat, x0 + 1.1, cy, cz, 0);
+    };
+    drape(5.6, 0.09, 'curtainOgee', F + 4.05, z1 + 0.05);
+    drape(5.9, 0.04, 'curtainLiner', F + 3.9, z1 - 0.28);
+  },
+  // towel ring hanging from a round back plate on a wall face at z (face 's': facing +z, 'n': facing -z)
+  towelRing(b, f) {
+    const { x, y, z } = f, s = f.face === 's' ? 1 : -1, NI = 'nickel';
+    b.prim(new THREE.CylinderGeometry(0.1, 0.1, 0.04, 24), NI, x, y, z + s * 0.02, 0, { rx: Math.PI / 2 });
+    b.prim(new THREE.CylinderGeometry(0.025, 0.025, 0.08, 10), NI, x, y - 0.03, z + s * 0.07, 0, { rx: Math.PI / 2 });
+    b.prim(new THREE.TorusGeometry(0.035, 0.012, 6, 16), NI, x, y - 0.075, z + s * 0.1);
+    b.prim(new THREE.TorusGeometry(0.25, 0.017, 8, 48), NI, x, y - 0.36, z + s * 0.1);
+  },
+  // double robe hook on a wall face at z: a small back plate, a short lower hook and a longer upper one
+  robeHooks(b, f) {
+    const { x, y, z } = f, s = f.face === 's' ? 1 : -1, NI = 'nickel', P = (dy, dz) => V3(x, y + dy, z + s * dz);
+    b.mbox(x - 0.06, x + 0.06, y - 0.16, y + 0.16, Math.min(z, z + s * 0.035), Math.max(z, z + s * 0.035), NI);
+    for (const [d0, reach, up] of [[-0.07, 0.2, 0.08], [0.07, 0.3, 0.1]]) {
+      b.mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([P(d0, 0.03), P(d0 - 0.02, reach * 0.6), P(d0 + up * 0.3, reach), P(d0 + up, reach * 0.95)]), 16, 0.018, 8), NI);
+      b.prim(new THREE.SphereGeometry(0.03, 10, 8), NI, ...P(d0 + up, reach * 0.95));
+    }
   },
   shower(b, f, mirrors, glass) {
     const [x0, x1, z0, z1] = f.r, F = f.base;

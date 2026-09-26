@@ -52,6 +52,9 @@ const DEFS = {
   tvBody: { color: '#141414', roughness: 0.4 },
   ceramic: { color: '#e9e3d6', roughness: 0.3 },
   curtain: { color: '#8f949a', roughness: 0.9, side: 'double' },
+  curtainOgee: { color: '#ffffff', roughness: 0.9, side: 'double', procedural: 'curtainOgee', repeat: 1.1, albedo: [0.33, 0.34, 0.36] },   // hall bath: grey ogee lattice
+  curtainLiner: { color: '#f0efeb', roughness: 0.8, side: 'double' },
+  marbleWhite: { color: '#ffffff', roughness: 0.2, procedural: 'marbleWhite', repeat: 2, albedo: [0.78, 0.78, 0.77] },   // Carrara-like: white, soft grey veins
   pegboard: { color: '#ffffff', roughness: 0.7, procedural: 'pegboard', repeat: 1, albedo: [0.7, 0.7, 0.68] },   // white, 1" holes
   garageDoor: { color: '#efeee9', roughness: 0.5 },
   grass: { color: '#6d8a47', roughness: 1, procedural: 'grass', repeat: 12 },
@@ -201,6 +204,37 @@ function proceduralTexture(kind) {
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
     cache.set(kind, t);
     return t;
+  } else if (kind === 'marbleWhite') {
+    // white marble with soft grey veining (Carrara-like); every stroke is drawn at its wrapped offsets too
+    g.fillStyle = '#f1f0ec'; g.fillRect(0, 0, 512, 512);
+    const wrap = draw => { for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) { g.save(); g.translate(ox, oy); draw(); g.restore(); } };
+    for (let i = 0; i < 26; i++) {
+      const x = rnd() * 512, y = rnd() * 512, r = 40 + rnd() * 120, a = 0.035 + rnd() * 0.05;
+      wrap(() => { const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, `rgba(170,172,176,${a})`); q.addColorStop(1, 'rgba(170,172,176,0)'); g.fillStyle = q; g.fillRect(x - r, y - r, 2 * r, 2 * r); });
+    }
+    g.filter = 'blur(1.2px)';
+    for (let v = 0; v < 11; v++) {
+      const pts = [];
+      let x = rnd() * 512, y = rnd() * 512, ang = -0.6 + rnd() * 1.2;
+      for (let k = 0; k < 60; k++) { pts.push([x, y]); ang += (rnd() - 0.5) * 0.5; x += Math.cos(ang) * 9; y += Math.sin(ang) * 9; }
+      const w = 0.6 + rnd() * 2.2, a = 0.25 + rnd() * 0.35;
+      wrap(() => { g.strokeStyle = `rgba(118,120,126,${a})`; g.lineWidth = w; g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.stroke(); });
+    }
+    g.filter = 'none';
+  } else if (kind === 'curtainOgee') {
+    // ogee (teardrop) lattice: mid-grey ground, light-grey ogees with white outlines, in offset rows
+    g.fillStyle = '#8f9296'; g.fillRect(0, 0, 512, 512);
+    const ogee = (cx, cy, w, h) => {
+      g.beginPath(); g.moveTo(cx, cy - h);
+      g.bezierCurveTo(cx + w * 0.15, cy - h * 0.55, cx + w, cy - h * 0.5, cx + w, cy);
+      g.bezierCurveTo(cx + w, cy + h * 0.5, cx + w * 0.15, cy + h * 0.55, cx, cy + h);
+      g.bezierCurveTo(cx - w * 0.15, cy + h * 0.55, cx - w, cy + h * 0.5, cx - w, cy);
+      g.bezierCurveTo(cx - w, cy - h * 0.5, cx - w * 0.15, cy - h * 0.55, cx, cy - h);
+    };
+    for (const [cx, cy] of [[128, 128], [384, 128], [0, 384], [256, 384], [512, 384], [128, 640], [384, 640], [128, -128], [384, -128]]) {
+      ogee(cx, cy, 112, 150); g.fillStyle = '#c3c6ca'; g.fill(); g.lineWidth = 9; g.strokeStyle = '#ffffff'; g.stroke();
+      ogee(cx, cy, 62, 88); g.lineWidth = 4; g.stroke();
+    }
   } else if (kind === 'pegboard') {
     // white hardboard with holes on a 1" grid (one tile = 1 ft)
     g.fillStyle = '#f1f0ec'; g.fillRect(0, 0, 512, 512);
