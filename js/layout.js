@@ -109,12 +109,12 @@ const wx = (z, x0, x1, y, ops = [], extra = {}) => ({ x0, z0: z, x1, z1: z, y, o
 const wz = (x, z0, z1, y, ops = [], extra = {}) => ({ x0: x, z0, x1: x, z1, y, ops, ...extra });
 const EXT = { t: EXT_T, ext: true };
 const hiWin = (a0, a1, sill = 3, head = 7, extra) => win(a0, a1, MAIN + sill, MAIN + head, extra);
-const loWin = (a0, a1, sill = 4.0, head = 4.0 + 57 / 12) => win(a0, a1, LOW + sill, LOW + head);   // lower level: 57" tall, sill 48" up
+const loWin = (a0, a1, sill = 4.0, head = 4.0 + 57 / 12, extra) => win(a0, a1, LOW + sill, LOW + head, extra);   // lower level: 57" tall, sill 48" up
 
 export const WALLS = [
   // ---- exterior ----
   wx(0, 0, 35, ALL, [loWin(21.7, 23.3), loWin(30.5, 33.5),
-    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7, { tiled: 'tileWall', frosted: true }), hiWin(30.6, 33.4, 3.6, 6.6, { overCounter: true })], EXT),   // hall-bath window over the tub: tiled in, obscure glass   // kitchen sink window: sill 8" over the counter
+    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7, { tiled: 'tileWall', frosted: true, dh: true }), hiWin(30.6, 33.4, 3.6, 6.6, { overCounter: true })], EXT),   // hall-bath window over the tub: tiled in, obscure glass   // kitchen sink window: sill 8" over the counter
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
   wz(0, GARAGE_Z, UP_BR_Z, HIX, [], EXT),                 // west end of the garage overhang
   wx(GARAGE_Z, 0, 20.75, LO, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' })], { ...EXT, yCuts: [SOFFIT_Y] }),   // garage front (lower storey); faces split at the soffit

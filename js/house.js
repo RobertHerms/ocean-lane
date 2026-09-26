@@ -410,7 +410,7 @@ function windowInSide(w, op) {
   for (const s of [-1, 1]) { const p = wp(alongX, c, (op.a0 + op.a1) / 2, s * (t / 2 + 0.4), (op.b0 + op.b1) / 2); if (roomAt(p[0], p[2], (op.b0 + op.b1) / 2)) return s; }
   return 1;
 }
-// Double-hung vinyl window: frame, sashes, glass, interior casing + stool, raised blinds.
+// Vinyl window (single tall lites; op.dh for double-hung): frame, sashes, glass, interior casing + stool, raised blinds.
 function windowUnit(b, glass, w, op, sliders) {
   const { alongX, t, c } = wallInfo(w);
   const P = (a, o, y) => wp(alongX, c, a, o, y);
@@ -445,7 +445,7 @@ function windowUnit(b, glass, w, op, sliders) {
     acc = s1;
     if (k > 0) frame(s0 - 0.06, s0 + 0.06, op.b0, op.b1);
     const fixed = op.panes && weights[k] === big;
-    const ys = h > 2.6 && !fixed
+    const ys = op.dh && h > 2.6 && !fixed   // double-hung only when asked for (dh); the house's windows are single tall lites (photos)
       ? [[op.b0 + fw, op.b0 + h / 2 + 0.03, inSide * (0.2 + sh)], [op.b0 + h / 2 - 0.03, op.b1 - fw, inSide * (0.08 + sh)]]
       : [[op.b0 + fw, op.b1 - fw, inSide * (0.14 + sh)]];
     for (const [y0, y1, d] of ys) {
@@ -478,11 +478,13 @@ function windowUnit(b, glass, w, op, sliders) {
   }
   // exterior trim
   const e0 = -inSide * t / 2, e1 = -inSide * (t / 2 + 0.07);
+  // xh: head (and flat bottom) trim height; noSill: flat trim all round instead of a projecting sill board
   const [X0, X1] = op.xw || [0.35, 0.35], k0 = op.xw ? 0 : 0.05, k1 = op.xw ? 0 : 0.05;
-  casingBox(b, alongX, c, op.a0 - X0, op.a0, op.b0 - 0.2, op.b1 + 0.35, e0, e1, -inSide, 'vinyl');
-  casingBox(b, alongX, c, op.a1, op.a1 + X1, op.b0 - 0.2, op.b1 + 0.35, e0, e1, -inSide, 'vinyl');
-  casingBox(b, alongX, c, op.a0 - X0, op.a1 + X1, op.b1, op.b1 + 0.35, e0, e1, -inSide, 'vinyl');
-  casingBox(b, alongX, c, op.a0 - X0 - k0, op.a1 + X1 + k1, op.b0 - 0.2, op.b0, e0, -inSide * (t / 2 + 0.16), -inSide, 'vinyl');
+  const XH = op.xh ?? 0.35, XB = op.noSill ? (op.xh ?? 0.2) : 0.2;
+  casingBox(b, alongX, c, op.a0 - X0, op.a0, op.b0 - XB, op.b1 + XH, e0, e1, -inSide, 'vinyl');
+  casingBox(b, alongX, c, op.a1, op.a1 + X1, op.b0 - XB, op.b1 + XH, e0, e1, -inSide, 'vinyl');
+  casingBox(b, alongX, c, op.a0 - X0, op.a1 + X1, op.b1, op.b1 + XH, e0, e1, -inSide, 'vinyl');
+  casingBox(b, alongX, c, op.a0 - X0 - k0, op.a1 + X1 + k1, op.b0 - XB, op.b0, e0, op.noSill ? e1 : -inSide * (t / 2 + 0.16), -inSide, 'vinyl');
 }
 
 // ============================================================ bow window ===
