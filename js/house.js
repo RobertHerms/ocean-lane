@@ -2656,9 +2656,10 @@ function exterior(b) {
       }
     }
   }
-  // entry recess: a stone-faced header over the opening down to just above the door, a white ceiling behind it
+  // entry recess: stone up to a white ceiling over the whole landing (the west side is open below it), a stone
+  // header at the mouth up to the roof
   const PORCH = 17.5, hz0 = 35.2, hz1 = 35.7, hTop = roofUnder(24.8, hz1);   // stone up to a ceiling level with the bedroom window heads
-  b.poly([[20.8, PORCH, 30], [28.8, PORCH, 30], [28.8, PORCH, hz0], [20.8, PORCH, hz0]], 'soffit', { n: [0, -1, 0], dens: 2 });
+  b.poly([[20.6, PORCH, 30.25], [29.05, PORCH, 30.25], [29.05, PORCH, hz0], [20.6, PORCH, hz0]], 'soffit', { n: [0, -1, 0], dens: 2 });
   b.box(20.6, 29.05, PORCH, hTop, hz0, hz1, 'ledgestone', { skip: ['nz', 'py'], dens: 2 });
   // stone pier face at the living-room corner, soffit to header (covers the siding/stone corner under the overhang)
   b.box(28.55, 29.05, L.SOFFIT_Y, PORCH, L.UP_LIV_Z + 0.25, L.UP_LIV_Z + 0.3, 'ledgestone', { skip: ['nz'], dens: 2 });
@@ -2684,7 +2685,7 @@ function exterior(b) {
   stoopRails(b);
   planter(b);
   // ---- ground: lawn; asphalt drive with a grey paver soldier course, scored concrete sidewalk and a lawn
-  // strip to the curb, the street; a bluestone pad at the foot of the stoop; a small patio out back
+  // strip to the curb, the street; a small patio out back
   const G = (x0, x1, z0, z1, y, mat, o = {}) => b.poly([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], mat, { n: [0, 1, 0], ...o });
   const DX0 = 0.2, DX1 = 20.6, PV = 0.67, SW0 = 65, SW1 = 69.5, CURB = 74.5, STREET = 75;
   G(-140, 190, -140, 190, -0.03, 'grass', { dens: 0.12 });
@@ -2698,33 +2699,42 @@ function exterior(b) {
   G(DX0, DX1, SW1, STREET, -0.01, 'asphalt', { dens: 0.5 });                                  // apron across the lawn strip
   G(-140, DX0, CURB, STREET, -0.01, 'concrete', { dens: 0.2 }); G(DX1, 190, CURB, STREET, -0.01, 'concrete', { dens: 0.2 });
   G(-140, 190, STREET, 100, -0.005, 'asphalt', { dens: 0.1 });
-  const stoop = L.FLIGHTS.find(f => f.id === 'frontStoop').r;
-  G(DX1, stoop[1], stoop[3], stoop[3] + 1.6, -0.01, 'bluestone', { dens: 1 });
   G(24, 41, -20, -13.2, -0.01, 'concrete', { dens: 0.5 });
   // white vinyl privacy fence, 6' high, along the back and side lot lines
   fence(b, [[-12, 4], [-12, -34], [54, -34], [54, 20]]);
 }
-// White vinyl railings down both sides of the front stoop: a post at the bay and one at the foot, top and
-// bottom rails following the nosing line, square balusters between.
+// White vinyl railings on both sides of the front stoop: a level run along each side of the top landing (from the
+// door wall / playroom wall to a corner post at the top of the stair), then a sloped run over a mid post down to a
+// post on the lower landing. Nothing across the landing front, the lower landing or the bottom steps.
 function stoopRails(b) {
-  const f = L.FLIGHTS.find(q => q.id === 'frontStoop'), [x0, x1, z0, z1] = f.r;
+  const f = L.FLIGHTS.find(q => q.id === 'frontStoop'), [, , z0, z1] = f.r;
   const rise = (f.h0 - f.h1) / f.risers, d = (z1 - z0) / f.risers;
-  const nose = z => rise * (1 + (z1 + 0.09 - z) / d);                // nosing line (the treads' front edges)
-  const pa = 35.55, pb = z1 - 0.55, V = 'vinyl';
-  for (const x of [x0 + 0.22, x1 - 0.22]) {
-    for (const z of [pa, pb]) {
-      b.mbox(x - 0.21, x + 0.21, 0, nose(z) + 3.05, z - 0.21, z + 0.21, V);
-      b.mbox(x - 0.26, x + 0.26, nose(z) + 3.05, nose(z) + 3.15, z - 0.26, z + 0.26, V);
-    }
-    const za = pa + 0.21, zb = pb - 0.21;
-    beam(b, [x, nose(za) + 2.8, za], [x, nose(zb) + 2.8, zb], 0.2, 0.22, V);
-    beam(b, [x, nose(za) + 0.4, za], [x, nose(zb) + 0.4, zb], 0.14, 0.14, V);
-    const n = Math.round((zb - za) / 0.36);
+  const nose = z => f.h1 + rise * (1 + (z1 + 0.09 - z) / d);    // nosing line (h1 added: the flight ends at 1.875)
+  const level = () => L.FRONT, V = 'vinyl', PH = 0.21;
+  const post = (x, z, top, cap = true) => {
+    b.mbox(x - PH, x + PH, 0, top, z - PH, z + PH, V);
+    if (cap) b.mbox(x - 0.26, x + 0.26, top, top + 0.1, z - 0.26, z + 0.26, V);
+  };
+  const run = (x, za, zb, base, skip = []) => {                  // rails between post faces za < zb
+    beam(b, [x, base(za) + 2.8, za], [x, base(zb) + 2.8, zb], 0.2, 0.22, V);
+    beam(b, [x, base(za) + 0.4, za], [x, base(zb) + 0.4, zb], 0.14, 0.14, V);
+    const n = Math.round((zb - za) / 0.43);
     for (let i = 1; i < n; i++) {
       const z = za + (zb - za) * i / n;
-      b.mbox(x - 0.055, x + 0.055, nose(z) + 0.47, nose(z) + 2.69, z - 0.055, z + 0.055, V);
+      if (skip.some(p => Math.abs(z - p) < PH + 0.1)) continue;   // the rails pass through the mid post
+      b.mbox(x - 0.055, x + 0.055, base(z) + 0.47, base(z) + 2.69, z - 0.055, z + 0.055, V);
     }
-    b.collider(x - 0.21, x + 0.21, 0, 10, pa, pb);
+  };
+  const ZC = 36.3, ZM = 40.05, ZB = 43.8;                          // corner, mid, bottom posts
+  // north posts: W against the door wall; E against the playroom stone, tucked up under the living-room soffit (no cap)
+  for (const [x, zN, zS, topN, capN] of [[20.82, 30.5, 30.25, L.FRONT + 3.05, true], [28.83, L.PWF + 0.25, L.PWF, L.SOFFIT_Y - 0.01, false]]) {
+    post(x, zN, topN, capN);
+    post(x, ZC, nose(ZC) + 3.05);                                  // ≈ 10.11
+    post(x, ZM, nose(ZM) + 3.05);                                  // ≈ 7.76
+    post(x, ZB, nose(ZB) + 3.05);                                  // ≈ 5.42 (3.55 above the lower landing)
+    run(x, zN + PH, ZC - PH, level);                               // W1 30.71→36.09 / E1 35.71→36.09 (no balusters)
+    run(x, ZC + PH, ZB - PH, nose, [ZM]);                          // W2 / E2 36.51→43.59
+    b.collider(x - PH, x + PH, 0, 10, zS, ZB + PH);                // west: 6.9 ft drop off the landing edge
   }
 }
 // Raised planter bed curving round the right side of the stoop's foot back to the house: ledgestone wall with a
