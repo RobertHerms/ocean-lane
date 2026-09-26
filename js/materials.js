@@ -10,7 +10,8 @@ const DEFS = {
   tileWall: { map: 'tile_marble.jpg', normalMap: 'tile_marble_normal.jpg', roughnessMap: 'tile_marble_rough.jpg', repeat: 4, roughness: 0.6 },
   tileKitchen: { map: 'tile_kitchen.jpg', normalMap: 'tile_kitchen_normal.jpg', roughnessMap: 'tile_kitchen_rough.jpg', repeat: 4, roughness: 0.9 },
   tileGrey: { map: 'tile_kitchen.jpg', normalMap: 'tile_kitchen_normal.jpg', roughnessMap: 'tile_kitchen_rough.jpg', repeat: 4, roughness: 0.9, color: '#c3c6ca' },   // stair closet porcelain
-  tileLanding: { map: 'tile_landing.jpg', normalMap: 'tile_landing_normal.jpg', roughnessMap: 'tile_landing_rough.jpg', repeat: 3, roughness: 1 },
+  tileLanding: { map: 'tile_landing.jpg', normalMap: 'tile_landing_normal.jpg', roughnessMap: 'tile_landing_rough.jpg', repeat: 3, roughness: 1 },   // (unused now)
+  tileEntry: { map: 'tile_entry.jpg', normalMap: 'tile_entry_normal.jpg', repeat: 3, roughness: 0.6 },   // entry landing: 18" greige porcelain (tools/make_tile_entry.py)
   tileBath2: { map: 'tile_bath2.jpg', normalMap: 'tile_bath2_normal.jpg', roughnessMap: 'tile_bath2_rough.jpg', repeat: 4, roughness: 1 },
   carpetBeige: { map: 'carpet_beige.jpg', normalMap: 'carpet_beige_normal.jpg', repeat: 2, roughness: 1, normalScale: 0.8 },
   rugGrey: { map: 'rug_grey.jpg', normalMap: 'rug_grey_normal.jpg', repeat: 2, roughness: 1, normalScale: 1 },

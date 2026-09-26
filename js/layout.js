@@ -77,7 +77,7 @@ export const ROOMS = [
   // wall (listed before the stairwell so the space below the landing reads as the closet)
   room('stcl', 'Closet', [LOW, FRONT], [[24.8, 28.55, 19.5, 29.75]], 'tileGrey', PAINT.storage),
   // two-storey stairwells
-  room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileLanding', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
+  room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileEntry', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
     baseY: FRONT, baseRects: [[20.8, 24.8, FD.z1, 30], [24.8, 28.8, FU.z1, 30]] }),
   room('rear', 'Rear entry & stairs', [LOW, MAIN_CEIL], [[35, 42.2, -8, 0]], 'carpetBeige', PAINT.tan, { slope: true }),
   room('coat', 'Rear closet', [MID, MAIN_CEIL], [[42.2, 45, -8, -3.3]], 'carpetBeige', PAINT.closet, { slope: true }),

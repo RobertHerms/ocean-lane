@@ -490,8 +490,11 @@ function floorsAndCeilings(b, glass) {
   }
   // landings, stair-closet floors, the lower-hall ceiling strip under the upper foyer
   const F = L.FRONT, kx = 24.8 + OPEN_W;              // the landing stops at the knee wall's cap beside the bottom flight
-  b.poly([[kx, F, L.FU.z1], [28.8, F, L.FU.z1], [28.8, F, L.FD.z1], [kx, F, L.FD.z1]], 'tileLanding', { n: [0, 1, 0] });
-  b.poly([[20.8, F, L.FD.z1], [28.8, F, L.FD.z1], [28.8, F, 30], [20.8, F, 30]], 'tileLanding', { n: [0, 1, 0] });
+  // entry tile: the 18" grid set out from the front door (a grout line on its centreline, a full tile at the sill)
+  const entryUV = pts => pts.map(p => [p[0] - 24.8, -(p[2] - 29.75)]);
+  for (const pts of [[[kx, F, L.FU.z1], [28.8, F, L.FU.z1], [28.8, F, L.FD.z1], [kx, F, L.FD.z1]], [[20.8, F, L.FD.z1], [28.8, F, L.FD.z1], [28.8, F, 30], [20.8, F, 30]]]) {
+    b.poly(pts, 'tileEntry', { n: [0, 1, 0], uv: entryUV(pts) });
+  }
   b.poly([[35, L.MID, -8], [42.2, L.MID, -8], [42.2, L.MID, -4.4], [35, L.MID, -4.4]], 'carpetBeige', { n: [0, 1, 0] });
   b.poly([[20.8, L.LOW, 19.5], [24.8, L.LOW, 19.5], [24.8, L.LOW, L.FD.z1], [20.8, L.LOW, L.FD.z1]], 'tileGrey', { n: [0, 1, 0] });   // under the bottom flight
   b.poly([[24.8, L.LOW, 19.5], [28.8, L.LOW, 19.5], [28.8, L.LOW, 29.75], [24.8, L.LOW, 29.75]], 'tileGrey', { n: [0, 1, 0] });   // stair closet
