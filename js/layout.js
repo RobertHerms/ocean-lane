@@ -10,25 +10,33 @@ export const MAIN_CEIL = 18;
 export const WALL_T = 0.4;
 export const EXT_T = 0.5;
 export const DOOR_H = 6.75;
-export const GARAGE_Z = 27.9;  // garage door line / bedroom south wall
+export const GARAGE_Z = 27.9;  // garage door line (lower storey front)
+// The upper storey cantilevers past the lower front walls: 2.1' over the garage, ~5" over the playroom.
+export const UP_BR_Z = 30.0;           // bedrooms 2/3 front wall (in the plane of the front-door wall)
+export const UP_LIV_Z = 35.4;          // living-room front wall (lower playroom wall stays at 35)
+export const SOFFIT_Y = LOW + 9.4;     // underside of the overhangs
 // Front entry landing: 16 risers of 7 1/2" from the lower floor to the main floor, 11 below the landing
 // (10 treads down) and 5 above it (4 treads up). Treads are 10".
 export const FRONT = LOW + (MAIN - LOW) * 11 / 16;
 const TREAD = 10 / 12;
 export const FD = { z0: 18.0, z1: 18.0 + 11 * TREAD };     // bottom flight (lower hall → landing)
 export const FU = { z0: 20, z1: 20 + 5 * TREAD };          // top flight (landing → main floor)
-// Rear stair annex: lean-to roof, so its ceiling slopes from just behind the kitchen header (z -0.2)
-// down to the back wall (z -8).
+// Rear stair annex: lean-to roof, so its ceiling slopes from the kitchen header's north face (z = ANNEX_Z,
+// where it meets the header's underside at 16.75) down to the back wall (z -8).
 export const ANNEX_SLOPE = 0.40625;
-export const annexCeil = z => 16.75 + (z + 0.2) * ANNEX_SLOPE;
+export const ANNEX_Z = -EXT_T / 2;
+export const annexCeil = z => 16.75 + (z - ANNEX_Z) * ANNEX_SLOPE;
 // Lower hall to the half bath: 32" clear between the wall faces
 const HB_HALL = 2.3 + 0.2 + 32 / 12 + 0.2;
 // Bow window on the living-room front: five equal panels on an arc between x 31.2 and 43.5 (plan),
 // 1'-5" deep at the centre; sill 1' above the floor, head 1' below the ceiling, a low flat ceiling inside.
-export const BOW = { x0: 31.2, x1: 43.5, z: 35, sag: 1.45, n: 5, sill: MAIN + 1, head: MAIN + 7, ceil: MAIN + 7.35 };
+export const BOW = { x0: 31.2, x1: 43.5, z: UP_LIV_Z, sag: 1.45, n: 5, sill: MAIN + 1, head: MAIN + 7, ceil: MAIN + 7.35,
+  base: MAIN + 0.6, seat: MAIN + 0.75 };   // cantilevered: underside 1.2' above the overhang soffit; a window seat inside
+export const PWF = 35.25;   // outer face of the playroom's lower front wall
 
 const LO = [0, MAIN - 0.1];
 const HI = [MAIN - 0.1, MAIN_CEIL];
+const HIX = [SOFFIT_Y, MAIN_CEIL];   // upper exterior walls over an overhang: hang down to the soffit
 const ALL = [0, MAIN_CEIL];
 
 export const PAINT = {
@@ -43,6 +51,7 @@ export const PAINT = {
   halfBath: '#ccbea5',
   garage: '#e6e4de',
   closet: '#e2ddd3',
+  storage: '#ecebe8',     // closet under the front stairs
   ceiling: '#f2f0eb',
   trim: '#f4f2ec',
   siding: '#d9d3c6',
@@ -64,16 +73,19 @@ export const ROOMS = [
   room('hall', 'Hallway', [MAIN, MAIN_CEIL],
     [[10.7, 15.5, 12.3, 15.6], [15.5, 19.3, 12.3, 15.6], [19.3, 24.8, 11.7, 15.6], [10.7, 14.2, 15.6, 17.9]],
     'wood', PAINT.tan, { crown: true }),
-  room('din', 'Dining Room', [MAIN, MAIN_CEIL], [[28.8, 45, 9.7, 20], [24.8, 28.8, 11.7, 20]], 'wood', PAINT.tan, { crown: true, rug: [32.2, 41.8, 11.6, 18.6, 'rugDining'] }),
-  room('liv', 'Living Room', [MAIN, MAIN_CEIL], [[28.8, 45, 20, 35]], 'wood', PAINT.tan, { crown: true, bay: [31.2, 43.5, 35, 36.2] }),
-  room('br2', 'Bedroom 2', [MAIN, MAIN_CEIL], [[0, 10.7, 14.3, GARAGE_Z]], 'wood', PAINT.grey, { rug: [1.2, 9.6, 18.2, 26.4, 'rugGrey'] }),
+  room('din', 'Dining Room', [MAIN, MAIN_CEIL], [[28.8, 45, 9.7, 20], [24.8, 28.8, 11.7, 20]], 'wood', PAINT.tan, { crown: true, crownRects: [[28.8, 32.2, 11.7, 20]], rug: [32.2, 41.8, 11.6, 18.6, 'rugDining'] }),
+  room('liv', 'Living Room', [MAIN, MAIN_CEIL], [[28.8, 45, 20, UP_LIV_Z]], 'wood', PAINT.tan, { crown: true, bay: [31.2, 43.5, UP_LIV_Z, UP_LIV_Z + 1.2] }),
+  room('br2', 'Bedroom 2', [MAIN, MAIN_CEIL], [[0, 10.7, 14.3, UP_BR_Z]], 'wood', PAINT.grey, { rug: [1.2, 9.6, 20.3, 28.5, 'rugGrey'] }),
   room('clB', 'Bedroom 2 closet', [MAIN, MAIN_CEIL], [[6.2, 10.7, 12.3, 14.3]], 'wood', PAINT.closet),
-  room('br3', 'Bedroom 3 (nursery)', [MAIN, MAIN_CEIL], [[10.7, 20.8, 18.2, GARAGE_Z], [10.7, 14.2, 17.9, 18.2]], 'wood', PAINT.grey, { rug: [11.8, 19.6, 19.4, 26.6, 'rugGrey'] }),
+  room('br3', 'Bedroom 3 (nursery)', [MAIN, MAIN_CEIL], [[10.7, 20.8, 18.2, UP_BR_Z], [10.7, 14.2, 17.9, 18.2]], 'wood', PAINT.grey, { rug: [11.8, 19.6, 21.5, 28.7, 'rugGrey'] }),
   room('cl3', 'Bedroom 3 closet', [MAIN, MAIN_CEIL], [[14.2, 18.9, 15.6, 18.2]], 'wood', PAINT.closet),
   room('lc', 'Linen closet', [MAIN, MAIN_CEIL], [[18.9, 20.8, 15.6, 18.2]], 'wood', PAINT.closet),
   room('upcl', 'Coat closet', [MAIN, MAIN_CEIL], [[20.8, 24.8, 15.6, 20]], 'wood', PAINT.closet),
+  // storage closet under the front stairs: under the top flight and on under the entry landing to the front
+  // wall (listed before the stairwell so the space below the landing reads as the closet)
+  room('stcl', 'Closet', [LOW, FRONT], [[24.8, 28.55, 19.5, 29.75], [20.8, 24.8, FD.z1, 29.75]], 'tileGrey', PAINT.storage),
   // two-storey stairwells
-  room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileLanding', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
+  room('foyer', 'Front entry & stairs', [LOW, MAIN_CEIL], [[20.8, 28.8, 19.5, 30]], 'tileEntry', PAINT.tan, { crown: true, crownRects: [[20.8, 28.8, 20, 30]],
     baseY: FRONT, baseRects: [[20.8, 24.8, FD.z1, 30], [24.8, 28.8, FU.z1, 30]] }),
   room('rear', 'Rear entry & stairs', [LOW, MAIN_CEIL], [[35, 42.2, -8, 0]], 'carpetBeige', PAINT.tan, { slope: true }),
   room('coat', 'Rear closet', [MID, MAIN_CEIL], [[42.2, 45, -8, -3.3]], 'carpetBeige', PAINT.closet, { slope: true }),
@@ -84,7 +96,6 @@ export const ROOMS = [
   room('clN', 'Closet', [LOW, LOW_CEIL], [[25.2, 28.8, 0, 2.3]], 'carpetBeige', PAINT.closet),
   room('util', 'Utility', [LOW, LOW_CEIL], [[25.2, 28.8, HB_HALL, 14.5]], 'concrete', PAINT.garage),
   room('play', 'Playroom', [LOW, LOW_CEIL], [[28.8, 45, 0, 35], [25.2, 28.8, 2.3, HB_HALL], [20.8, 28.8, 14.5, 19.5]], 'carpetBeige', PAINT.lower, { crown: true }),
-  room('stcl', 'Closet', [LOW, MAIN], [[24.8, 28.8, 19.5, FU.z1]], 'carpetBeige', PAINT.closet),
   room('rcl', 'Closet', [LOW, MAIN], [[35, 38.9, -4.4, 0]], 'carpetBeige', PAINT.closet),
 ];
 
@@ -93,45 +104,59 @@ export const ROOMS = [
 const win = (a0, a1, b0, b1, extra = {}) => ({ a0, a1, b0, b1, kind: 'window', ...extra });
 const door = (a0, a1, base, extra = {}) => ({ a0, a1, b0: base, b1: base + DOOR_H + 0.05, kind: 'door', ...extra });
 const open = (a0, a1, b0, b1, extra = {}) => ({ a0, a1, b0, b1, kind: 'open', ...extra });
+// a recess in one face of a wall (side ±1 on its normal), depth deep; see wallNiche() in house.js
+const niche = (a0, a1, b0, b1, side, extra = {}) => ({ a0, a1, b0, b1, kind: 'niche', side, ...extra });
 const wx = (z, x0, x1, y, ops = [], extra = {}) => ({ x0, z0: z, x1, z1: z, y, ops, ...extra });
 const wz = (x, z0, z1, y, ops = [], extra = {}) => ({ x0: x, z0, x1: x, z1, y, ops, ...extra });
 const EXT = { t: EXT_T, ext: true };
 const hiWin = (a0, a1, sill = 3, head = 7, extra) => win(a0, a1, MAIN + sill, MAIN + head, extra);
-const loWin = (a0, a1, sill = 4.0, head = 4.0 + 57 / 12) => win(a0, a1, LOW + sill, LOW + head);   // lower level: 57" tall, sill 48" up
+const loWin = (a0, a1, sill = 4.0, head = 4.0 + 57 / 12, extra) => win(a0, a1, LOW + sill, LOW + head, extra);   // lower level: 57" tall, sill 48" up
 
 export const WALLS = [
   // ---- exterior ----
   wx(0, 0, 35, ALL, [loWin(21.7, 23.3), loWin(30.5, 33.5),
-    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7), hiWin(30.6, 33.4, 3.6, 7)], EXT),
+    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7, { tiled: 'tileWall', frosted: true, dh: true }), hiWin(30.6, 33.4, 3.6, 6.6, { overCounter: true })], EXT),   // hall-bath window over the tub: tiled in, obscure glass   // kitchen sink window: sill 8" over the counter
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
-  wx(GARAGE_Z, 0, 20.75, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
-    hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
-  wz(20.8, GARAGE_Z, 35, ALL, [], { ...EXT, t: WALL_T }),      // same thickness as the foyer wall it continues
+  wz(0, GARAGE_Z, UP_BR_Z, HIX, [], EXT),                 // west end of the garage overhang
+  wx(GARAGE_Z, 0, 20.75, LO, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' })], { ...EXT, yCuts: [SOFFIT_Y] }),   // garage front (lower storey); faces split at the soffit
+  // high sills are intentional: the photos show short twin-lite windows set high under the eave
+  wx(UP_BR_Z, 0, 20.35, HIX, [
+    hiWin(4.15, 8.15, 4.45, 7.3, { panes: [1, 1], xw: [0.06, 0.06], xh: 0.06, noSill: true }),    // Bedroom 2: twin lites, flat trim (per photos)
+    hiWin(12.95, 16.95, 4.45, 7.3, { panes: [1, 1], xw: [0.06, 0.06], xh: 0.06, noSill: true }),  // Bedroom 3 (nursery)
+  ], EXT),   // bedrooms 2/3: upper storey, 2.1' out over the garage; ends at 20.35 (free end runs on to x 20.6)
+  wz(20.8, GARAGE_Z, 30.05, ALL, [], { ...EXT, t: WALL_T, yCuts: [FRONT] }),   // foyer/closet part; its free end runs on 0.2 to the door wall's outer face (30.25)
+  wz(20.8, 30.25, 35, [17.5, 18], [], { ...EXT, t: WALL_T }),                   // closes the attic void above the porch ceiling (PORCH = 17.5 in house.js)
   wx(30, 20.85, 28.8, ALL, [door(23.3, 26.3, FRONT, { unit: [22.25, 27.35], mullions: [[23.2, 23.3], [26.3, 26.4]] }), win(22.25, 23.2, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true }),
-    win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], EXT),
+    win(26.4, 27.35, FRONT, FRONT + DOOR_H + 0.05, { sidelight: true })], { ...EXT, yCuts: [FRONT] }),   // yCuts: split the faces there (closet below the landing)
   wz(28.8, 30, 35, ALL, [], EXT),
-  wx(35, 28.8, 45, LO, [loWin(31.8, 34.7), loWin(34.7, 38.9), loWin(38.9, 41.6)], EXT),
-  wx(35, 28.8, 31.2, HI, [], EXT), wx(35, 43.5, 45, HI, [], EXT),
+  wz(28.8, 35, UP_LIV_Z, HIX, [], EXT),                  // recess side wall carries on under the living-room overhang
+  wx(35, 28.8, 45, LO, [
+    loWin(31.3, 34.55, 4.0, 8.75, { panes: [1], xw: [0.06, 0.06], xh: 0.06, noSill: true, cw: [0.29, 0.25] }),
+    loWin(35.05, 38.3, 4.0, 8.75, { panes: [1], xw: [0.06, 0.06], xh: 0.06, noSill: true, cw: [0.25, 0.25] }),
+    loWin(38.8, 42.05, 4.0, 8.75, { panes: [1], xw: [0.06, 0.06], xh: 0.06, noSill: true, cw: [0.25, 0.29] }),
+  ], { ...EXT, yCuts: [SOFFIT_Y] }),   // 3 equal units with stone piers between (photos override the plan's 2.85/4.1/2.9); faces split at the soffit
+  wx(UP_LIV_Z, 28.8, 31.2, HIX, [], EXT), wx(UP_LIV_Z, 43.5, 45, HIX, [], EXT),
   // bow window across the living room (BOW, built in house.js); a header drops to its low ceiling
-  wx(35, BOW.x0, BOW.x1, HI, [open(BOW.x0, BOW.x1, MAIN - 0.1, BOW.ceil)], { t: EXT_T }),
+  wx(UP_LIV_Z, BOW.x0, BOW.x1, HIX, [open(BOW.x0, BOW.x1, MAIN - 0.1, BOW.ceil)], { t: EXT_T }),   // bowWindow() adds the shakes under the bow and the seat
   wz(45, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),                  // annex: top follows the lean-to roof
   wz(45, 0, 35, ALL, [loWin(10.3, 14.3), hiWin(1.2, 8.5, 2.6, 7, { panes: [1, 2.2, 1] }), hiWin(13.5, 17.6)], EXT),   // playroom window opposite the hall entrance
+  wz(45, 35, UP_LIV_Z, HIX, [], EXT),                    // east end of the living-room overhang
   wz(35, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),
-  wx(-8, 35, 45, [0, annexCeil(-8)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),
+  wx(-8, 35, 45, [0, annexCeil(-8 + EXT_T / 2)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),   // top meets the ceiling at its inside face
   // ---- rear stair annex ----
   // under the rear up-flight the wall only blocks below the stair (colTop), so the top steps stay walkable
   wx(0, 35, 38.9, LO, [door(35.4, 37.9, LOW)], { t: EXT_T, colTop: MAIN - 1.3 }),
-  wx(0, 38.9, 45, LO, [open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header)
+  wx(0, 38.9, 45, [0, MAIN], [open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header); the kitchen floor runs over its top
   wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)], { t: EXT_T }),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
-  wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3)]),
+  wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3 + WALL_T / 2)]),                 // up to the pantry's (higher) ceiling
   // header between the kitchen and the rear stairs (the stair ceiling slopes down from its underside)
   wx(0, 35, 42.2, [MAIN - 0.1, MAIN_CEIL], [open(35, 42.2, MAIN - 0.1, 16.75)], { t: EXT_T }),
   // ---- main level interior ----
   wx(12.3, 0, 15.5, HI, [door(0.6, 5.8, MAIN), door(11.9, 14.9, MAIN)]),
   wx(14.3, 0, 10.7, HI, [door(6.8, 10.1, MAIN, { bypass: true })]),
   wz(6.2, 12.3, 14.3, HI),
-  wz(10.7, 12.3, GARAGE_Z, HI, [door(14.8, 17.5, MAIN)]),
+  wz(10.7, 12.3, UP_BR_Z, HI, [door(14.8, 17.5, MAIN)]),
   wz(15.5, 0, 12.3, HI, [door(0.7, 3.2, MAIN), door(8.9, 11.3, MAIN)]),
   wz(21.3, 0, 6.5, HI),
   wx(6.5, 18.9, 21.3, HI),
@@ -140,10 +165,12 @@ export const WALLS = [
   wz(19.3, 6.5, 12.3, HI),
   wx(12.3, 15.5, 19.3, HI),
   wx(11.7, 19.3, 28.8, HI, [door(21.1, 23.6, MAIN)]),      // runs on past the fridge enclosure so the hall wall is one plane
-  wz(28.8, 9.9, 11.7, HI),                                 // dining-room face of the fridge enclosure
-  wz(26.6, 0, 11.7, HI),
-  wx(9.7, 32.2, 45, HI, [open(35, 41, MAIN + 3.3, MAIN + 7.0, { passThrough: true })]),
-  wz(32.2, 9.7, 11.6, HI),
+  wz(28.8, 9.9, 11.3, HI),                                 // dining-room face of the fridge enclosure (butts into the header)
+  wz(26.6, 0, 11.7, HI, [niche(1.0, 2.0, MAIN + 3.6, MAIN + 5.6, -1, { depth: 0.33, lining: 'tileWall', shelves: [MAIN + 4.3, MAIN + 5.0] })]),   // tile niche at the tub's east end
+  wx(9.7, 32.2, 45, HI, [open(35.3, 42.8, MAIN + 2.65, MAIN + 6.67, { passThrough: true })]),
+  wz(32.2, 9.7, 11.3, HI),                                 // pier: its end shows flush with the header's south face
+  // header over the plain drywall-wrapped doorway from the dining room to the kitchen, beside the fridge
+  wx(11.7, 28.8, 32.2, [MAIN - 0.1, MAIN_CEIL], [open(29.0, 32.0, MAIN - 0.1, MAIN + 6.7)]),
   wx(15.6, 14.2, 24.8, HI, [door(19.1, 20.6, MAIN)]),
   wz(14.2, 15.6, 18.2, HI),
   wx(17.9, 10.7, 14.2, HI, [door(11.0, 13.8, MAIN)]),
@@ -152,8 +179,8 @@ export const WALLS = [
   wz(20.8, 15.6, 20, HI),
   wz(24.8, 15.6, 20, HI, [door(16.1, 18.6, MAIN)]),          // coat closet: door faces the dining room
   wx(20, 20.8, 24.8, HI),                                  // ...and a solid wall faces the stairs
-  wz(20.8, 20, GARAGE_Z, ALL),                             // stairwell west (garage / bedroom 3 side)
-  wz(28.8, 19.5, 30, [0, MAIN + 0.1], [], { t: EXT_T }),   // stairwell east below the living-room railing (flush with the front wall)
+  wz(20.8, 20, GARAGE_Z, ALL, [], { yCuts: [FRONT] }),     // stairwell west (garage / bedroom 3 side); closet below the landing
+  wz(28.8, 19.5, 30, [0, MAIN], [], { t: EXT_T, yCuts: [FRONT] }),   // stairwell east below the living-room railing (flush with the front wall); the living-room floor runs over its top
   // ---- lower level interior (1st floor plan) ----
   wz(18.3, 0, 14.6, LO),
   wx(4.5, 18.3, 25.2, LO),
@@ -171,19 +198,20 @@ export const WALLS = [
 
 // Solid half-walls beside stair flights (top follows the higher flight), with a balustrade on top.
 export const KNEEWALLS = [
-  { x: 24.8, z0: 19.5, z1: FD.z1, flight: 'frontUp' },      // carries on beside the landing to the top of the bottom flight
+  { x: 24.8, z0: 19.5, z1: FD.z1, flight: 'frontUp',       // carries on beside the landing to the top of the bottom flight;
+    hole: { z0: 20.5, z1: FD.z1, under: 'frontDown' } },   // full height 1 ft past the closet door, then open under the bottom flight
   { x: 38.9, z0: -4.4, z1: 0, flight: 'rearUp', closed: true },
 ];
 
 // Balustrades: white square balusters, stained oak rail. base(t) = walking height along the run.
 export const RAILINGS = [
-  { x0: 28.8, z0: 20, x1: 28.8, z1: 30, base: () => MAIN, h: 3.0, newels: [0, 1], shoe: 'oak' },             // living room / stairwell (photo 57)
+  { x0: 28.8, z0: 20, x1: 28.8, z1: 29.75, base: () => MAIN, h: 3.0, newels: [0, { t: 1, half: 'z+' }], shoe: 'oak' },   // living room / stairwell (photo 57): half newel on the front wall
   { x0: 24.8, z0: FU.z0, x1: 24.8, z1: FU.z1, base: t => MAIN - t * (MAIN - FRONT) + (MAIN - FRONT) / 5, h: 2.75,  // front up-flight (nosing line)
-    newels: [0.05, 1], newelBase: t => (t < 0.5 ? MAIN : FRONT), flight: 'frontUp' },
+    newels: [{ t: WALL_T / 2 / (FU.z1 - FU.z0), half: 'z-' }, 1], newelBase: t => (t < 0.5 ? MAIN : FRONT), flight: 'frontUp' },   // half newel on the wall at the top
   { x0: 24.8, z0: FU.z1, x1: 24.8, z1: FD.z1, base: () => FRONT, h: 3.0, newels: [1] },                        // landing edge over the bottom flight
   { x0: 24.8, z0: FD.z0, x1: 24.8, z1: 19.5, base: t => LOW + (FRONT - LOW) * (t * (19.5 - FD.z0) / (FD.z1 - FD.z0)) + (FRONT - LOW) / 11,
-    h: 2.75, newels: [0], newelBase: () => LOW, flight: 'frontDown' },                                          // foot of the bottom flight in the lower hall
-  { x0: 38.9, z0: 0, x1: 42.2, z1: 0, base: () => MAIN, h: 3.0, newels: [1] },                                 // kitchen / rear stairs
+    h: 2.75, newels: [0, { t: (19.5 - WALL_T / 2 - FD.z0) / (19.5 - FD.z0), half: 'z+' }], newelBase: () => LOW, flight: 'frontDown' },   // foot of the bottom flight in the lower hall; half newel on the wall
+  { x0: 38.9, z0: 0, x1: 42.0, z1: 0, base: () => MAIN, h: 3.0, newels: [0, { t: 1, half: 'x+' }] },          // kitchen / rear stairs: corner post where the up-flight rail arrives, half newel on the wall
   { x0: 38.9, z0: -4.4, x1: 38.9, z1: 0, base: t => MID + t * (MAIN - MID) + (MAIN - MID) / 8 + 0.12, h: 2.65, // rear up-flight
     newels: [0], newelBase: () => MID },
 ];
@@ -243,49 +271,63 @@ export const GARAGE_DOORS = [
 // Walkable surfaces; flights interpolate height along z from h0 (at z0) to h1 (at z1).
 export const FLOORS = [
   { r: [0, 45, 0, 20], h: MAIN },
-  { r: [0, 20.8, 20, GARAGE_Z], h: MAIN },
-  { r: [28.8, 45, 20, 35], h: MAIN },
-  { r: [31.2, 43.5, 35, 36.2], h: MAIN },
+  { r: [0, 20.8, 20, UP_BR_Z], h: MAIN },
+  { r: [28.8, 45, 20, UP_LIV_Z], h: MAIN },
+  { r: [31.2, 43.5, UP_LIV_Z, UP_LIV_Z + 1.2], h: BOW.seat },   // bow window seat
   { r: [42.2, 45, -3.3, 0], h: MAIN },
   { r: [24.8, 28.8, FU.z1, 30], h: FRONT },
   { r: [20.8, 28.8, FD.z1, 30], h: FRONT },
-  { r: [21.2, 28.4, 30, 31.4], h: FRONT },
+  { r: [20.6, 28.55, 30, 35.5], h: FRONT },           // stoop top landing
+  { r: [28.55, 29.05, PWF, 35.5], h: FRONT },         //   in front of the east recess wall's end
+  { r: [20.3, 29.05, 43.5, 45.0], h: 1.875 },         // stoop lower landing
+  { r: [19.0, 21.4, 45.0, 46.0], h: 1.25 },           // bottom step (upper)
+  { r: [17.9, 20.2, 46.0, 47.0], h: 0.625 },          // bottom step (lower)
   { r: [35, 42.2, -8, -4.4], h: MID },
   { r: [42.2, 45, -8, -3.3], h: MID },
   { r: [35.6, 39.4, -9.4, -8], h: MID },
 ];
 export const FLIGHTS = [
-  { id: 'frontUp', r: [24.8, 28.8, FU.z0, FU.z1], h0: MAIN, h1: FRONT, risers: 5, finish: 'oak', open: -1 },   // 4 treads
-  { id: 'frontDown', r: [20.8, 24.8, FD.z0, FD.z1], h0: LOW, h1: FRONT, risers: 11, finish: 'oak' },            // 10 treads
-  { id: 'frontStoop', r: [22.6, 27, 31.4, 31.4 + 11 * 0.92], h0: FRONT, h1: LOW, risers: 11, finish: 'stone', exterior: true },
+  { id: 'frontUp', r: [24.8, 28.8, FU.z0, FU.z1], h0: MAIN, h1: FRONT, risers: 5, finish: 'oak', open: -1, under: PAINT.storage },   // 4 treads
+  { id: 'frontDown', r: [20.8, 24.8, FD.z0, FD.z1], h0: LOW, h1: FRONT, risers: 11, finish: 'oak', under: PAINT.storage },   // 10 treads; storage under it
+  { id: 'frontStoop', r: [20.6, 29.05, 35.5, 43.5], h0: FRONT, h1: 1.875, risers: 8, finish: 'stone', exterior: true },   // 8 x 7.5" down to the lower landing; no flare
   { id: 'rearUp', r: [35, 38.9, -4.4, 0], h0: MID, h1: MAIN, risers: 8, finish: 'carpet' },
   { id: 'rearDown', r: [38.9, 42.2, -4.4, 0], h0: MID, h1: LOW, risers: 8, finish: 'carpet' },
   { id: 'rearStoop', r: [35.9, 39.1, -13.2, -9.4], h0: LOW, h1: MID, risers: 7, finish: 'stone', exterior: true },
 ];
 // Solid masses: under landings and closed-off space (b: x0,x1,y0,y1,z0,z1)
 export const SOLIDS = [
-  { b: [24.8, 28.8, 0, FRONT, FU.z1, FD.z1], paint: PAINT.tan },
-  { b: [20.8, 28.8, 0, FRONT, FD.z1, 30], paint: PAINT.tan },
   { b: [35, 42.2, 0, MID, -8, -4.4], paint: PAINT.tan },
   { b: [42.2, 45, 0, MID, -8, -4.4], paint: PAINT.tan },
   { b: [42.0, 45, 0, MID, -4.4, -3.3], paint: PAINT.tan },
   { b: [42.0, 45, 0, MAIN, -3.3, 0], paint: PAINT.lower },
   { b: [26.6, 28.8, MAIN, MAIN_CEIL, 9.7, 11.7], paint: PAINT.tan },      // fridge surround
-  { b: [21.2, 28.4, 0, FRONT, 30, 31.4], paint: '#b9b3a7', ext: true },   // front stoop
-  { b: [35.6, 39.4, 0, MID, -9.4, -8], paint: '#b9b3a7', ext: true },
+  { b: [20.6, 28.55, 0, FRONT, 30, 35.5], mat: 'ledgestone', top: 'bluestone', ext: true },   // front stoop top landing (from the wall centreline: covers the threshold)
+  { b: [28.55, 29.05, 0, FRONT, PWF, 35.5], mat: 'ledgestone', top: 'bluestone', ext: true },
+  { b: [20.3, 29.05, 0, 1.875, 43.5, 45.0], mat: 'ledgestone', top: 'bluestone', ext: true },    // lower landing (0.3 flare west)
+  { b: [19.0, 21.4, 0, 1.25, 45.0, 46.0], mat: 'ledgestone', top: 'bluestone', ext: true },      // bottom step, upper
+  { b: [17.9, 20.2, 0, 0.625, 46.0, 47.0], mat: 'ledgestone', top: 'bluestone', ext: true },     // bottom step, lower (on the drive)
+  { b: [35.6, 39.4, 0, MID, -9.4, -8], mat: 'ledgestone', top: 'bluestone', ext: true },
 ];
 // Between floors: underside = lower-level ceiling
-export const SLABS = [[0, 45, 0, 20], [0, 20.8, 20, GARAGE_Z], [28.8, 45, 20, 35], [42.2, 45, -3.3, 0]];
-export const ROOF = [[0, 45, 0, GARAGE_Z], [20.8, 45, GARAGE_Z, 35], [35, 45, -8, 0]];
-export const SKYLIGHTS = [[21.7, 24.1, 7.8, 10.2], [36.6, 40.4, -6.8, -4.9]];   // hall bath (in front of the vanity), rear stairs
+export const SLABS = [[0, 45, 0, 20], [0, 20.8, 20, UP_BR_Z], [28.8, 45, 20, UP_LIV_Z], [42.2, 45, -3.3, 0]];
+export const ROOF = [[0, 45, 0, UP_BR_Z], [20.8, 45, UP_BR_Z, UP_LIV_Z], [35, 45, -8, 0]];
+// r: ceiling opening [x0,x1,z0,z1]. lean: the shaft leans toward the back of the house up to glazing in the
+// roof plane (glass: its x extent, len: its length up the roof from straight above the opening's north edge).
+export const SKYLIGHTS = [
+  { r: [21.7, 24.1, 7.8, 10.2], lean: { glass: [22.0, 23.8], len: 2.0 } },   // hall bath, in front of the vanity
+  { r: [36.6, 40.4, -6.8, -4.9] },                                           // rear stairs
+];
 
 // ------------------------------------------------------------- lighting ----
-// Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop
+// Light fixtures (all switched on for the tour). kind: can | dome | chandelier | pendant | shop | semiflush |
+// wellcan (can in a skylight well's side face) | track (ceiling track with spot heads) | fan (exhaust grille, no light) |
+// flush (small white flush dome)
 const can = (x, z, y, I) => ({ kind: 'can', x, z, y, I });
 export const FIXTURES = [
   // playroom recessed lights: two rows of six down the long room; lower halls
   ...[32.85, 40.95].flatMap(x => [2.9, 8.75, 14.6, 20.4, 26.25, 32.1].map(z => can(x, z, LOW_CEIL))),
   { kind: 'semiflush', x: 24.8, z: 17.0, y: LOW_CEIL },                           // lower hall, in the middle (photo 49)
+  { kind: 'flush', x: 26.7, z: 27.5, y: FRONT - 0.7 },                            // stair closet: small white dome on the flat ceiling
   can(27, (2.3 + HB_HALL) / 2, LOW_CEIL),
   can(21.75, 7.0, LOW_CEIL, 24), can(21.75, 12.0, LOW_CEIL, 24),                      // laundry: two high hats on the centreline, door to back wall
   { kind: 'dome', x: 21.7, z: 2.2, y: LOW_CEIL },
@@ -297,12 +339,19 @@ export const FIXTURES = [
   // main level
   { kind: 'semiflush', x: 18.5, z: 14, y: MAIN_CEIL },   // one light in the upstairs hall (photos 5, 31)
   { kind: 'chandelier', x: 37, z: 15.1, y: MAIN_CEIL, drop: 2.9 },
-  can(31, 4.8, MAIN_CEIL), can(35.5, 4.8, MAIN_CEIL), can(40.5, 4.8, MAIN_CEIL), can(31, 8, MAIN_CEIL),
-  can(32.5, 23.5, MAIN_CEIL), can(41, 23.5, MAIN_CEIL), can(32.5, 31.5, MAIN_CEIL), can(41, 31.5, MAIN_CEIL),
+  // kitchen: over the curved corner, the range, the sink, the middle, the breakfast table by the east window
+  ...[[29.9, 3.4], [30.2, 6.3], [33.0, 3.6], [36.8, 3.2], [36.8, 7.0], [42.6, 3.9], [42.6, 6.1]].map(([x, z]) => can(x, z, MAIN_CEIL)),
+  // living room: six cans on a perimeter pattern
+  ...[31.8, 42.0].flatMap(x => [22.6, 27.5, 32.4].map(z => can(x, z, MAIN_CEIL))),
   can(4, 3.5, MAIN_CEIL), can(11, 3.5, MAIN_CEIL), can(4, 9, MAIN_CEIL), can(11, 9, MAIN_CEIL),
-  can(3, 18.5, MAIN_CEIL), can(7.7, 18.5, MAIN_CEIL), can(3, 24.5, MAIN_CEIL), can(7.7, 24.5, MAIN_CEIL),
-  can(13.6, 21, MAIN_CEIL), can(18, 21, MAIN_CEIL), can(13.6, 25.5, MAIN_CEIL), can(18, 25.5, MAIN_CEIL),
-  can(23.5, 5, MAIN_CEIL), can(25.2, 9.0, MAIN_CEIL),
+  can(3, 19.55, MAIN_CEIL), can(7.7, 19.55, MAIN_CEIL), can(3, 25.55, MAIN_CEIL), can(7.7, 25.55, MAIN_CEIL),
+  can(13.6, 22.05, MAIN_CEIL), can(18, 22.05, MAIN_CEIL), can(13.6, 26.55, MAIN_CEIL), can(18, 26.55, MAIN_CEIL),
+  // hall bath: over the tub, two over the vanity, one in the skylight well's south face, exhaust fan
+  can(23.9, 1.5, MAIN_CEIL), can(20.4, 8.1, MAIN_CEIL), can(20.4, 10.3, MAIN_CEIL),
+  { kind: 'wellcan', sky: 0, up: 1 / 3 },
+  { kind: 'fan', x: 23.0, z: 5.6, y: MAIN_CEIL },
+  // back stairs: a track with two spots under the kitchen / rear-stair header, aimed down the stairs
+  { kind: 'track', x0: 37, x1: 41, z: -0.2, y: annexCeil(ANNEX_Z), heads: [37.8, 40.2] },   // on the header's underside
   can(18.3, 2.8, MAIN_CEIL), can(17.2, 6.9, MAIN_CEIL),
   { kind: 'dome', x: 17.4, z: 10.4, y: MAIN_CEIL },
 ];
@@ -333,28 +382,30 @@ export const FURNITURE = [
   { type: 'shower', r: [15.7, 18.8, 5.4, 8.35], base: MAIN, frame: '#b39556' },
   // Bath 1
   { type: 'tub', r: [21.5, 26.4, 0.2, 2.75], base: MAIN },
-  { type: 'toilet', x: 22.5, z: 4.6, base: MAIN, face: 'e' },
-  { type: 'vanity', r: [19.5, 21.2, 7.1, 11.2], base: MAIN, face: 'e', top: 'granite', cab: '#f2f1ec', mirror: true },
+  { type: 'toilet', x: 22.5, z: 4.6, base: MAIN, face: 'e', button: true },
+  { type: 'vanity', r: [19.5, 21.2, 7.1, 11.2], base: MAIN, face: 'e', top: 'marbleWhite', cab: '#f2f1ec', shaker: true, mirror: 'cabinet', faucet: 'widespread' },
+  { type: 'towelRing', x: 20.4, y: MAIN + 4.4, z: 6.7, face: 's' },                // on the return wall north of the vanity
+  { type: 'robeHooks', x: 24.6, y: MAIN + 5.5, z: 11.5, face: 'n' },                // east of the door
   // Kitchen
   { type: 'kitchen' },
-  { type: 'table', r: [41.07, 44.67, 3.25, 6.45], base: MAIN, wood: '#c49a63', chairs: 4, chair: 'windsor', against: 'e' },   // pushed to the window wall
+  { type: 'table', r: [41.07, 44.67, 3.25, 6.45], base: MAIN, wood: '#c9a26a', chairs: 4, chair: 'wheat', against: 'e' },   // pushed to the window wall
   // Dining & living
   { type: 'table', r: [34.3, 39.7, 13.4, 16.8], base: MAIN, wood: '#3e2518', chairs: 6, chair: 'dining' },
   // couches meet at the front outside corner with an end table (and table lamp) between them
-  { type: 'sofa', r: [42.0, 45, 24.4, 32.2], base: MAIN, face: 'w', fabric: '#c9bba4' },
-  { type: 'sofa', r: [34.2, 42.0, 31.7, 34.7], base: MAIN, face: 'n', fabric: '#c9bba4' },
-  { type: 'endTable', r: [42.3, 44.65, 32.4, 34.65], base: MAIN, wood: '#4a2e1f', lamp: true },
-  { type: 'coffeeTable', r: [36.8, 40.6, 27.0, 29.8], base: MAIN, wood: '#4a2e1f' },
-  { type: 'desk', r: [29.05, 31.45, 30.6, 34.6], base: MAIN, wood: '#5a3a26', face: 'e', monitors: 1, chair: true },
-  { type: 'rugRect', r: [34.5, 42.0, 23.8, 31.4], base: MAIN, color: '#b9ae9a' },
+  { type: 'sofa', r: [42.0, 45, 24.8, 32.6], base: MAIN, face: 'w', fabric: '#c9bba4' },
+  { type: 'sofa', r: [34.2, 42.0, 32.1, 35.1], base: MAIN, face: 'n', fabric: '#c9bba4' },
+  { type: 'endTable', r: [42.3, 44.65, 32.8, 35.05], base: MAIN, wood: '#4a2e1f', lamp: true },
+  { type: 'coffeeTable', r: [36.8, 40.6, 27.4, 30.2], base: MAIN, wood: '#4a2e1f' },
+  { type: 'desk', r: [29.05, 31.45, 31.0, 35.0], base: MAIN, wood: '#5a3a26', face: 'e', monitors: 1, chair: true },
+  { type: 'rugRect', r: [34.5, 42.0, 24.2, 31.8], base: MAIN, color: '#b9ae9a' },
   // Bedroom 2
-  { type: 'bed', r: [0.35, 3.95, 20.6, 27.65], base: MAIN, head: 's', wood: '#f4f2ec', size: 'twin' },
+  { type: 'bed', r: [0.35, 3.95, 22.7, 29.75], base: MAIN, head: 's', wood: '#f4f2ec', size: 'twin' },
   { type: 'dresser', r: [9.0, 10.5, 19.2, 24.5], base: MAIN, h: 3.0, wood: '#f4f2ec', face: 'w', mirror: true },   // east wall
   { type: 'makeupDesk', r: [1.9, 4.5, 14.5, 15.8], base: MAIN },                                                  // north wall
   // Bedroom 3 (nursery)
   { type: 'crib', r: [17.8, 20.6, 19.0, 23.6], base: MAIN },
-  { type: 'dresser', r: [15.0, 19.6, 26.2, 27.7], base: MAIN, h: 3.1, wood: '#f4f2ec', face: 'n' },
-  { type: 'glider', x: 12.6, z: 26.45, base: MAIN },
+  { type: 'dresser', r: [15.0, 19.6, 28.3, 29.8], base: MAIN, h: 3.1, wood: '#f4f2ec', face: 'n' },
+  { type: 'glider', x: 12.6, z: 28.55, base: MAIN },
   { type: 'changingTable', r: [10.9, 12.2, 22.4, 24.7], base: MAIN },                                            // west wall, leaves a way past the open door
   // Playroom
   { type: 'sectional', r: [36.2, 44.75, 21.0, 34.75], base: LOW, fabric: '#6e5f51', chaise: 5.6 },   // chaise lounge at the north end
@@ -371,10 +422,13 @@ export const FURNITURE = [
   // Utility
   { type: 'furnace', r: [26.0, 28.4, 10.0, 13.6], base: LOW },
   { type: 'waterHeater', x: 26.9, z: 6.75, base: LOW },
-  // Garage (tidy)
-  { type: 'shelving', r: [0.3, 1.9, 2.0, 12.5], base: LOW },
-  { type: 'workbench', r: [2.5, 12.5, 0.3, 2.3], base: LOW },
-  { type: 'fridge', r: [15.6, 18.1, 11.3, 14.0], base: LOW, face: 's' },
+  // Garage: a workshop corner (L-shaped bench along the north and west walls); by the house door a top-freezer
+  // fridge with its back to the door's wall, a steel cabinet, a plank shelf over both and a door mat
+  { type: 'workshop', r: [0.3, 10.3, 0.3, 5.3], base: LOW },
+  { type: 'fridge', r: [18.25, 20.55, 17.85, 20.35], base: LOW, face: 'w' },
+  { type: 'steelCabinet', r: [19.05, 20.55, 20.45, 23.45], base: LOW, h: 6 },
+  { type: 'plankShelf', r: [19.55, 20.6, 17.85, 23.45], base: LOW, y: 7 },
+  { type: 'doorMat', r: [18.9, 20.5, 15.0, 17.2], base: LOW },
 ];
 
 // ------------------------------------------------------------- wall art ----
@@ -383,20 +437,20 @@ export const FURNITURE = [
 // a: centre along the wall, y: centre height, w × h in feet, frame: black | white | silver | none, mat: white mat.
 const art = (wall, c, dir, a, y, w, h, style, frame = 'black', mat = false) => ({ wall, c, dir, a, y, w, h, style, frame, mat });
 export const ART = [
-  art('z', 44.75, -1, 28.3, MAIN + 5.2, 4.2, 3.0, 'abstract', 'silver'),            // living room, over the couch (photo 1)
-  art('x', 34.75, -1, 30.1, MAIN + 5.3, 1.1, 1.4, 'flower', 'white', true),         // beside the bow window (photos 1, 2)
+  art('z', 44.75, -1, 28.7, MAIN + 5.2, 4.2, 3.0, 'abstract', 'silver'),            // living room, over the couch (photo 1)
+  art('x', 35.15, -1, 30.1, MAIN + 5.3, 1.1, 1.4, 'flower', 'white', true),         // beside the bow window (photos 1, 2)
   art('x', 11.9, 1, 25.5, MAIN + 5.0, 2.0, 2.6, 'bw', 'black', true),               // end of the hall (photos 5, 57)
-  art('x', 9.9, 1, 33.6, MAIN + 5.2, 1.1, 1.4, 'bw2', 'black', true),               // dining, beside the pass-through (photo 2)
+  art('x', 11.9, 1, 27.7, MAIN + 5.2, 1.1, 1.4, 'bw2', 'black', true),              // dining, left of the fridge doorway
   art('z', 44.75, -1, 11.1, MAIN + 5.3, 1.0, 1.25, 'bw3', 'black', true),           // dining, left of the window (photo 6)
   art('z', 44.75, -1, 12.45, MAIN + 5.3, 1.0, 1.25, 'bw4', 'black', true),
   art('z', 44.75, -1, 18.9, MAIN + 5.2, 1.3, 1.6, 'bw5', 'black', true),            // dining, right of the window (photo 2)
-  art('z', 0.25, 1, 26.5, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
-  art('z', 0.25, 1, 24.8, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
-  art('z', 0.25, 1, 22.6, MAIN + 5.1, 2.0, 2.0, 'dahlia', 'white'),                // (photo 30)
-  art('x', 27.65, -1, 2.15, MAIN + 5.3, 0.9, 1.8, 'dreamcatcher', 'none'),          // over the headboard (photos 27, 30)
+  art('z', 0.25, 1, 28.6, MAIN + 5.0, 1.3, 1.75, 'hearts', 'white'),                // bedroom 2 (photos 26-28)
+  art('z', 0.25, 1, 26.9, MAIN + 5.0, 1.3, 1.75, 'stripes', 'white'),
+  art('z', 0.25, 1, 24.7, MAIN + 5.1, 2.0, 2.0, 'dahlia', 'white'),                // (photo 30)
+  art('x', 29.75, -1, 2.15, MAIN + 5.3, 0.9, 1.8, 'dreamcatcher', 'none'),          // over the headboard (photos 27, 30)
   art('z', 10.9, 1, 24.3, MAIN + 5.3, 1.1, 1.4, 'anchor', 'white', true),           // nursery, over the changing table (photos 34, 36)
   art('z', 10.9, 1, 22.8, MAIN + 5.3, 1.1, 1.4, 'whale', 'white', true),
-  art('x', 27.65, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
+  art('x', 29.75, -1, 12.0, MAIN + 5.2, 0.8, 1.2, 'sailboat', 'white', true),       // nursery, by the window (photo 36)
   art('z', 20.6, -1, 21.3, MAIN + 5.4, 2.2, 1.8, 'nautical', 'none'),               // nursery decal over the crib (no name)
   art('z', 44.75, -1, (0.25 + (10.3 - 0.29)) / 2, LOW + 5.6, 4.5, 3.6, 'seascape', 'silver'),   // centred between the corner and the window trim              // playroom, the far side of the window (photos 39-41)
   art('z', 44.75, -1, (21.0 + 34.75) / 2, LOW + 5.6, 6.2, 4.2, 'sailboats', 'silver'),   // playroom, centred over the couch (photo 41)
@@ -411,10 +465,10 @@ export const ART = [
   art('z', 15.3, -1, 4.6, MAIN + 6.0, 0.9, 1.15, 'bw3', 'black', true),
   art('z', 15.3, -1, 6.0, MAIN + 6.0, 0.9, 1.15, 'bw4', 'black', true),
   // living room: a small gallery around the desk (photo 2)
-  art('z', 29.05, 1, 31.2, MAIN + 5.5, 1.0, 1.25, 'bw5', 'black', true),
-  art('z', 29.05, 1, 32.55, MAIN + 5.85, 1.1, 0.85, 'beach', 'white', true),
-  art('z', 29.05, 1, 32.55, MAIN + 4.95, 0.8, 0.65, 'bw2', 'black', true),
-  art('z', 29.05, 1, 33.9, MAIN + 5.5, 1.0, 1.25, 'skyline', 'black', true),
+  art('z', 29.05, 1, 31.6, MAIN + 5.5, 1.0, 1.25, 'bw5', 'black', true),
+  art('z', 29.05, 1, 32.95, MAIN + 5.85, 1.1, 0.85, 'beach', 'white', true),
+  art('z', 29.05, 1, 32.95, MAIN + 4.95, 0.8, 0.65, 'bw2', 'black', true),
+  art('z', 29.05, 1, 34.3, MAIN + 5.5, 1.0, 1.25, 'skyline', 'black', true),
 ];
 
 // Start just inside the front door, on the entry landing, facing the stairs.

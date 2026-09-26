@@ -100,7 +100,7 @@ async function loadBake() {
   }
 }
 
-const bake = await loadBake();
+const bake = new URLSearchParams(location.search).has('nobake') ? null : await loadBake();
 if (!bake) {
   // fallback so the layout can still be inspected before a bake exists
   scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 2.5));
@@ -169,15 +169,17 @@ for (const g of groups.values()) {
 
 // glass & mirrors
 const glassMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, metalness: 0, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
-{
+// obscure (frosted) glass glows with the daylight coming through it: unlit, translucent white
+const frostMat = new THREE.MeshBasicMaterial({ color: '#e4e9ea', transparent: true, opacity: 0.88, depthWrite: false, side: THREE.DoubleSide });
+for (const [mat, list] of [[glassMat, house.glass.filter(gl => !gl.frosted)], [frostMat, house.glass.filter(gl => gl.frosted)]]) {
   const pos = [], nrm = [];
-  for (const gl of house.glass) {
+  for (const gl of list) {
     for (let i = 1; i < gl.pts.length - 1; i++) for (const k of [0, i, i + 1]) { pos.push(...gl.pts[k]); nrm.push(...gl.n); }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
-  const glass = new THREE.Mesh(geo, glassMat);
+  const glass = new THREE.Mesh(geo, mat);
   glass.renderOrder = 2;
   scene.add(glass);
 }
