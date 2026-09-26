@@ -469,11 +469,25 @@ function bowWindow(b, glass) {
 function floorsAndCeilings(b, glass) {
   const ceilDone = [];                                // flat ceilings so far [y, rect]: later rooms don't repeat them
   for (const r of L.ROOMS) {
-    for (const [x0, x1, z0, z1] of r.rects) {
-      if (!NO_FLOOR.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
+    for (const [x0, x1, z0r, z1r] of r.rects) {
+      if (!NO_FLOOR.has(r.id)) b.poly([[x0, r.h[0], z0r], [x1, r.h[0], z0r], [x1, r.h[0], z1r], [x0, r.h[0], z1r]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
       if (NO_CEIL.has(r.id)) continue;
-      const holes = L.SKYLIGHTS.map(sk => sk.r).filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
       const cy = z => (r.slope ? L.annexCeil(z) : r.h[1]);
+      // a sloped (annex) ceiling runs between the faces of the walls at its ends, not their centrelines: run on
+      // under a wall it passes up inside it (the wall's top is open) and bakes outdoor light onto the joint
+      const face = (zc, dir) => {
+        const w = r.slope && L.WALLS.find(w2 => { const q = wallInfo(w2); return q.alongX && Math.abs(q.c - zc) < 1e-3 && q.a0 < x1 - 1e-3 && q.a1 > x0 + 1e-3 && w2.y[1] > cy(zc) - 0.2; });
+        if (!w) return zc;
+        const zf = zc + dir * wallInfo(w).t / 2;
+        // an opening whose head stands above the ceiling there (the pantry door): close the slot over it
+        for (const op of w.ops) {
+          const a0 = Math.max(op.a0, x0), a1 = Math.min(op.a1, x1);
+          if (a1 - a0 > 1e-3 && op.b1 > cy(zf) + 1e-3) b.poly([[a0, cy(zf), zf], [a1, cy(zf), zf], [a1, op.b1, zf], [a0, op.b1, zf]], 'ceiling', { n: [0, 0, -dir] });
+        }
+        return zf;
+      };
+      const z0 = face(z0r, 1), z1 = face(z1r, -1);
+      const holes = L.SKYLIGHTS.map(sk => sk.r).filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
       const k = Math.hypot(1, L.ANNEX_SLOPE), cn = r.slope ? [0, -1 / k, L.ANNEX_SLOPE / k] : [0, -1, 0];
       const done = r.slope ? [] : ceilDone.filter(([y]) => Math.abs(y - r.h[1]) < 1e-6).map(([, q]) => q);
       if (!r.slope) ceilDone.push([r.h[1], [x0, x1, z0, z1]]);
@@ -1074,7 +1088,9 @@ function fixtures(b, lamps) {
       b.mbox(x - 0.45, x + 0.45, y - 0.04, y, z - 0.35, z + 0.35, 'plate');
       for (let i = 0; i < 12; i++) { const sz = z - 0.275 + i * 0.05; b.mbox(x - 0.36, x + 0.36, y - 0.046, y - 0.039, sz - 0.0125, sz + 0.0125, 'paint:#2b2a28'); }
     } else if (f.kind === 'track') {
-      // white ceiling track; cylinder spot heads on short stems, tilted 45 degrees down toward -z
+      // white ceiling track; cylinder spot heads on short stems, tilted 45 degrees down toward -z. Only the
+      // lenses glow: each lamp is a 'down' lamp just in front of its lens, so the track and the heads' bodies
+      // (above it) aren't flooded by their own lamps and don't bake as bright blocks
       b.mbox(f.x0, f.x1, y - 0.06, y, z - 0.05, z + 0.05, 'plate');
       const dy = -Math.SQRT1_2, dz = -Math.SQRT1_2, hy = y - 0.4;
       for (const hx of f.heads) {
@@ -1082,7 +1098,7 @@ function fixtures(b, lamps) {
         b.prim(new THREE.SphereGeometry(0.05, 10, 8), 'plate', hx, y - 0.32, z);
         b.prim(new THREE.CylinderGeometry(0.14, 0.14, 0.45, 20), 'plate', hx, hy, z, 0, { rx: -3 * Math.PI / 4 });
         b.prim(new THREE.CylinderGeometry(0.11, 0.11, 0.01, 20), 'lampGlow', hx, hy + dy * 0.23, z + dz * 0.23, 0, { rx: -3 * Math.PI / 4, bake: false });
-        lamps.push({ x: hx, y: hy + dy * 0.53, z: z + dz * 0.53, r: 0.12, kind: 'omni', I: 6 });
+        lamps.push({ x: hx, y: hy + dy * 0.4, z: z + dz * 0.4, r: 0.1, kind: 'down', I: 6 });
       }
     } else if (f.kind === 'flush') {
       // small white flush dome (11")

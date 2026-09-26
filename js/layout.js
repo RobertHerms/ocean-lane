@@ -17,10 +17,11 @@ export const FRONT = LOW + (MAIN - LOW) * 11 / 16;
 const TREAD = 10 / 12;
 export const FD = { z0: 18.0, z1: 18.0 + 11 * TREAD };     // bottom flight (lower hall → landing)
 export const FU = { z0: 20, z1: 20 + 5 * TREAD };          // top flight (landing → main floor)
-// Rear stair annex: lean-to roof, so its ceiling slopes from just behind the kitchen header (z -0.2)
-// down to the back wall (z -8).
+// Rear stair annex: lean-to roof, so its ceiling slopes from the kitchen header's north face (z = ANNEX_Z,
+// where it meets the header's underside at 16.75) down to the back wall (z -8).
 export const ANNEX_SLOPE = 0.40625;
-export const annexCeil = z => 16.75 + (z + 0.2) * ANNEX_SLOPE;
+export const ANNEX_Z = -EXT_T / 2;
+export const annexCeil = z => 16.75 + (z - ANNEX_Z) * ANNEX_SLOPE;
 // Lower hall to the half bath: 32" clear between the wall faces
 const HB_HALL = 2.3 + 0.2 + 32 / 12 + 0.2;
 // Bow window on the living-room front: five equal panels on an arc between x 31.2 and 43.5 (plan),
@@ -120,14 +121,14 @@ export const WALLS = [
   wz(45, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),                  // annex: top follows the lean-to roof
   wz(45, 0, 35, ALL, [loWin(10.3, 14.3), hiWin(1.2, 8.5, 2.6, 7, { panes: [1, 2.2, 1] }), hiWin(13.5, 17.6)], EXT),   // playroom window opposite the hall entrance
   wz(35, -8, 0, [0, 16.75], [], { ...EXT, slope: true }),
-  wx(-8, 35, 45, [0, annexCeil(-8)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),
+  wx(-8, 35, 45, [0, annexCeil(-8 + EXT_T / 2)], [win(35.6, 41.6, MID, MID + 6.75, { slider: true })], EXT),   // top meets the ceiling at its inside face
   // ---- rear stair annex ----
   // under the rear up-flight the wall only blocks below the stair (colTop), so the top steps stay walkable
   wx(0, 35, 38.9, LO, [door(35.4, 37.9, LOW)], { t: EXT_T, colTop: MAIN - 1.3 }),
   wx(0, 38.9, 45, LO, [open(39.1, 42.0, 0, LOW_CEIL)], { t: EXT_T }),   // flush with the exterior wall; opening full height (no header)
   wx(0, 42.2, 45, HI, [door(42.6, 44.6, MAIN)], { t: EXT_T }),
   wz(42.2, -8, 0, [MID - 0.1, 16.75], [door(-7.2, -4.9, MID, { bypass: true })], { slope: true }),
-  wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3)]),
+  wx(-3.3, 42.2, 45, [MID - 0.1, annexCeil(-3.3 + WALL_T / 2)]),                 // up to the pantry's (higher) ceiling
   // header between the kitchen and the rear stairs (the stair ceiling slopes down from its underside)
   wx(0, 35, 42.2, [MAIN - 0.1, MAIN_CEIL], [open(35, 42.2, MAIN - 0.1, 16.75)], { t: EXT_T }),
   // ---- main level interior ----
@@ -321,7 +322,7 @@ export const FIXTURES = [
   { kind: 'wellcan', sky: 0, up: 1 / 3 },
   { kind: 'fan', x: 23.0, z: 5.6, y: MAIN_CEIL },
   // back stairs: a track with two spots under the kitchen / rear-stair header, aimed down the stairs
-  { kind: 'track', x0: 37, x1: 41, z: -0.2, y: annexCeil(-0.2), heads: [37.8, 40.2] },
+  { kind: 'track', x0: 37, x1: 41, z: -0.2, y: annexCeil(ANNEX_Z), heads: [37.8, 40.2] },   // on the header's underside
   can(18.3, 2.8, MAIN_CEIL), can(17.2, 6.9, MAIN_CEIL),
   { kind: 'dome', x: 17.4, z: 10.4, y: MAIN_CEIL },
 ];
