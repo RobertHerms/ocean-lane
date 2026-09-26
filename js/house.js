@@ -423,14 +423,15 @@ function windowUnit(b, glass, w, op, sliders) {
       glass.push({ pts: [P(s0 + sash, d, y0 + sash), P(s1 - sash, d, y0 + sash), P(s1 - sash, d, y1 - sash), P(s0 + sash, d, y1 - sash)], n: wn(alongX, inSide) });
     }
   }
-  // interior casing, stool and apron (cw: narrower casing that stops at a bow window's joints)
+  // interior casing, stool and apron (cw: narrower casing that stops at a bow window's joints). Over a
+  // countertop (sill within a foot of it) there's no apron and only a narrow stool: the backsplash is below
   const o0 = inSide * t / 2, o1 = inSide * (t / 2 + 0.055), W = 0.29;
   const [W0, W1] = op.cw || [W, W], j0 = W0 < W, j1 = W1 < W;
   casingBox(b, alongX, c, op.a0 - W0, op.a0, op.b0, op.b1 + W, o0, o1, inSide);
   casingBox(b, alongX, c, op.a1, op.a1 + W1, op.b0, op.b1 + W, o0, o1, inSide);
   casingBox(b, alongX, c, op.a0 - W0 - (j0 ? 0 : 0.03), op.a1 + W1 + (j1 ? 0 : 0.03), op.b1, op.b1 + W + 0.02, o0, o1, inSide);
-  casingBox(b, alongX, c, op.a0 - W0 - (j0 ? 0 : 0.1), op.a1 + W1 + (j1 ? 0 : 0.1), op.b0 - 0.07, op.b0, inSide * (t / 2 - 0.2), inSide * (t / 2 + 0.2), inSide);
-  casingBox(b, alongX, c, op.a0 - W0 + (j0 ? 0 : 0.02), op.a1 + W1 - (j1 ? 0 : 0.02), op.b0 - 0.37, op.b0 - 0.07, o0, o1, inSide);
+  casingBox(b, alongX, c, op.a0 - W0 - (j0 ? 0 : 0.1), op.a1 + W1 + (j1 ? 0 : 0.1), op.b0 - 0.07, op.b0, inSide * (t / 2 - 0.2), inSide * (t / 2 + (op.overCounter ? 0.1 : 0.2)), inSide);
+  if (!op.overCounter) casingBox(b, alongX, c, op.a0 - W0 + (j0 ? 0 : 0.02), op.a1 + W1 - (j1 ? 0 : 0.02), op.b0 - 0.37, op.b0 - 0.07, o0, o1, inSide);
   // raised blinds: slat stack at the head of the opening
   const bs = inSide * (t / 2 - 0.12);
   const p0 = P(op.a0 + 0.05, bs - inSide * 0.08, op.b1 - 0.42), p1 = P(op.a1 - 0.05, bs + inSide * 0.08, op.b1 - 0.02);
@@ -1317,8 +1318,8 @@ function kitchen(b) {
     b.box(W, W + depth - 0.2, F, F + kick, z0, z1, KICK, { skip: ['ny', 'nx', 'py'] });
     cabinetFronts(b, 'x+', W + depth - 0.1, z0, z1, F + kick, cTop - topT, doors, true);
   };
-  const baseNorth = (x0, x1, doors) => {
-    b.box(x0, x1, F + kick, cTop - topT, N, N + depth - 0.1, CAB, { skip: ['ny', 'nz'], collide: true });
+  const baseNorth = (x0, x1, doors, sink) => {        // sink: no top face (the counter covers the rest; the basin shows)
+    b.box(x0, x1, F + kick, cTop - topT, N, N + depth - 0.1, CAB, { skip: ['ny', 'nz', ...(sink ? ['py'] : [])], collide: true });
     b.box(x0, x1, F, F + kick, N, N + depth - 0.2, KICK, { skip: ['ny', 'nz', 'py'] });
     cabinetFronts(b, 'z+', N + depth - 0.1, x0, x1, F + kick, cTop - topT, doors, true);
   };
@@ -1337,14 +1338,14 @@ function kitchen(b) {
   fridge(b, W, 6.8, 9.65, F);
   // north run: base with a drawer, sink base under the window, dishwasher, rounded end cabinet at the stair
   baseNorth(bx, 30.3, 1);
-  baseNorth(30.3, 32.6, 2);
+  baseNorth(30.3, 32.6, 2, true);
   dishwasher(b, 32.6, 34.5, N, F);
   const xEnd = 34.5;
   // countertops (west strip, black top between range and fridge, north run with sink cut-out)
   const z1 = N + depth + 0.08, xf = W + depth + 0.08;
   b.box(W, xf, cTop - topT, cTop, bz, 3.4, TOP, { skip: ['nx', 'nz', 'pz'], dens: 7 });
   b.box(W, xf, cTop - topT, cTop, 5.9, 6.72, 'counterBlack', { skip: ['nx'], dens: 7 });
-  const sx0 = 30.55, sx1 = 32.35, sz0 = N + 0.3, sz1 = N + 1.75;
+  const sx0 = 30.55, sx1 = 32.35, sz0 = N + 0.6, sz1 = N + 1.95;          // basin forward, clear of the window trim
   const topPiece = (x0, x1, za, zb, skip) => b.box(x0, x1, cTop - topT, cTop, za, zb, TOP, { skip, dens: 7 });
   topPiece(bx, sx0, N, z1, ['nz', 'nx', 'px']);
   topPiece(sx1, xEnd, N, z1, ['nz', 'nx', 'px']);
@@ -1361,7 +1362,7 @@ function kitchen(b) {
   b.collider(xEnd, 35.0, F, cTop, N, z1);
   // sink basin + faucet
   sinkInner(b, sx0, sx1, sz0, sz1, cTop - 0.75, cTop - topT);
-  faucet(b, (sx0 + sx1) / 2, cTop, N + 0.12, 's');
+  faucet(b, (sx0 + sx1) / 2, cTop, N + 0.42, 's');
   // backsplash (black over the black top)
   b.box(W, 35.0, cTop, cTop + 0.3, N, N + 0.05, TOP, { skip: ['nz', 'ny'], dens: 6 });
   b.box(W, W + 0.05, cTop, cTop + 0.3, N + 0.05, 3.4, TOP, { skip: ['nx', 'ny'], dens: 6 });

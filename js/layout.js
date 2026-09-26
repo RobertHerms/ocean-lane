@@ -106,7 +106,7 @@ const loWin = (a0, a1, sill = 4.0, head = 4.0 + 57 / 12) => win(a0, a1, LOW + si
 export const WALLS = [
   // ---- exterior ----
   wx(0, 0, 35, ALL, [loWin(21.7, 23.3), loWin(30.5, 33.5),
-    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7), hiWin(30.6, 33.4, 3.6, 6.6)], EXT),
+    hiWin(11.85, 14.8), hiWin(16.1, 19.1, 4, 7), hiWin(22.8, 25.9, 4, 7), hiWin(30.6, 33.4, 3.6, 6.6, { overCounter: true })], EXT),   // kitchen sink window: sill 8" over the counter
   wz(0, 0, GARAGE_Z, ALL, [hiWin(8.3, 11.5), hiWin(14.9, 18.2)], EXT),
   wx(GARAGE_Z, 0, 20.75, ALL, [open(1.6, 10.2, 0, 7, { garageDoor: 'gd1' }), open(10.8, 19.4, 0, 7, { garageDoor: 'gd2' }),
     hiWin(4.55, 7.35), hiWin(13.6, 16.4)], EXT),
