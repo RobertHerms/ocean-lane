@@ -6,6 +6,9 @@ import { Builder, extrude } from './geom.js';
 
 const TRIM = 'trim';
 const EPS = 1e-4;
+const FLOOR_LEVELS = [L.LOW, L.MID, L.FRONT, L.MAIN];
+const NO_FLOOR = new Set(['foyer', 'rear', 'stcl']);   // rooms whose floors are drawn separately (landings, flights)
+const NO_CEIL = new Set(['stcl', 'rcl']);
 
 export function roomAt(x, z, y) {
   for (const r of L.ROOMS) {
@@ -126,10 +129,23 @@ function walls(b, glass, sliders) {
         }
         // soffit / sill faces next to openings
         for (const op of covering) {
-          if (Math.abs(op.b1 - s) < 1e-6) b.poly([wp(alongX, c, p, -t / 2, s), wp(alongX, c, q, -t / 2, s), wp(alongX, c, q, t / 2, s), wp(alongX, c, p, t / 2, s)],
-            op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, mid, 0, 0)), s - 1), s - 1) : TRIM, { n: [0, -1, 0] });
-          if (Math.abs(op.b0 - e0) < 1e-6 && !op.passThrough) b.poly([wp(alongX, c, p, -t / 2, e0), wp(alongX, c, q, -t / 2, e0), wp(alongX, c, q, t / 2, e0), wp(alongX, c, p, t / 2, e0)],
-            TRIM, { n: [0, 1, 0] });
+          if (Math.abs(op.b1 - s) < 1e-6) {
+            // soffit: each half of the wall's thickness, unless a room's flat ceiling at that height already
+            // runs over it (to the wall centreline) and the two would be coplanar
+            const mat = op.kind === 'open' && !op.passThrough ? paintFor(roomAt(...xz(wp(alongX, c, mid, 0, 0)), s - 1), s - 1) : TRIM;
+            for (const [o0, o1] of [[-t / 2, 0], [0, t / 2]]) {
+              const pr = wp(alongX, c, mid, Math.sign(o0 + o1) * (t / 2 + 0.3), s - 0.5), r = roomAt(pr[0], pr[2], s - 0.5);
+              if (r && !r.slope && !NO_CEIL.has(r.id) && Math.abs(r.h[1] - s) < 1e-6) continue;
+              b.poly([wp(alongX, c, p, o0, s), wp(alongX, c, q, o0, s), wp(alongX, c, q, o1, s), wp(alongX, c, p, o1, s)], mat, { n: [0, -1, 0] });
+            }
+          }
+          if (Math.abs(op.b0 - e0) > 1e-6 || op.passThrough) continue;
+          // no sill under an opening at floor level (doors, the front sidelights, the patio slider): the floors
+          // (and the stoop / threshold outside) already cover it, and a sill face would be coplanar and z-fight
+          if (FLOOR_LEVELS.some(y => Math.abs(op.b0 - y) < 1e-6) && (op.kind === 'door' || op.sidelight || op.slider)) continue;
+          // a window's sill face stops where its stool starts (the stool's top is at the same height)
+          const [s0, s1] = op.kind === 'window' ? (ins => (ins > 0 ? [-t / 2, t / 2 - 0.2] : [-(t / 2 - 0.2), t / 2]))(windowInSide(w, op)) : [-t / 2, t / 2];
+          if (s1 - s0 > 1e-3) b.poly([wp(alongX, c, p, s0, e0), wp(alongX, c, q, s0, e0), wp(alongX, c, q, s1, e0), wp(alongX, c, p, s1, e0)], TRIM, { n: [0, 1, 0] });
         }
         const lo = wp(alongX, c, pp, -t / 2, s), hi = wp(alongX, c, qq, t / 2, e), ce = Math.min(e, w.colTop ?? Infinity);
         if (ce > s) b.collider(Math.min(lo[0], hi[0]), Math.max(lo[0], hi[0]), s, ce, Math.min(lo[2], hi[2]), Math.max(lo[2], hi[2]));
@@ -317,6 +333,13 @@ function sliderUnit(b, glass, w, op, inSide, sliders) {
   });
 }
 
+// Which side of the wall (±1 on its normal) a window's room is on.
+function windowInSide(w, op) {
+  if (op.inSide) return op.inSide;
+  const { alongX, t, c } = wallInfo(w);
+  for (const s of [-1, 1]) { const p = wp(alongX, c, (op.a0 + op.a1) / 2, s * (t / 2 + 0.4), (op.b0 + op.b1) / 2); if (roomAt(p[0], p[2], (op.b0 + op.b1) / 2)) return s; }
+  return 1;
+}
 // Double-hung vinyl window: frame, sashes, glass, interior casing + stool, raised blinds.
 function windowUnit(b, glass, w, op, sliders) {
   const { alongX, t, c } = wallInfo(w);
@@ -330,10 +353,7 @@ function windowUnit(b, glass, w, op, sliders) {
     }
     return;
   }
-  const inSide = op.inSide || (() => {
-    for (const s of [-1, 1]) { const p = P((op.a0 + op.a1) / 2, s * (t / 2 + 0.4), (op.b0 + op.b1) / 2); if (roomAt(p[0], p[2], (op.b0 + op.b1) / 2)) return s; }
-    return 1;
-  })();
+  const inSide = windowInSide(w, op);
   if (op.slider) return sliderUnit(b, glass, w, op, inSide, sliders);
   const fw = 0.16, depth = 0.34;
   const f0 = inSide * -0.02, f1 = inSide * (depth - 0.02);
@@ -400,7 +420,7 @@ function bowWindow(b, glass) {
   const cross = (k, P, zc) => { const [dx, dz] = dirOf(k); const u = (zc - P[1]) / dz; return [P[0] + dx * u, zc]; };   // facet k's face line through P meets z = zc
   const outline = (P, zc) => [cross(0, P[1], zc), ...P.slice(1, n), cross(n - 1, P[n - 1], zc)];
   b.poly(outline(I, z).map(([px, pz]) => [px, F, pz]), 'wood', { n: [0, 1, 0] });
-  b.poly(outline(I, z + 0.2).map(([px, pz]) => [px, ceil, pz]), 'ceiling', { n: [0, -1, 0] });
+  b.poly(outline(I, z + 0.25).map(([px, pz]) => [px, ceil, pz]), 'ceiling', { n: [0, -1, 0] });   // from the header's outer face
   b.poly(outline(O, z + h).map(([px, pz]) => [px, F - 0.6, pz]), 'soffit', { n: [0, -1, 0], dens: 2 });
   const paint = 'paint:' + L.PAINT.tan, ext = h * Math.tan(step / 2);
   for (let k = 0; k < n; k++) {
@@ -423,7 +443,7 @@ function bowWindow(b, glass) {
       face(A0, A1, head, TOP, zo, 1, 'siding');
       sub.poly([[wa0, sill, zi], [wa0, sill, zo], [wa0, head, zo], [wa0, head, zi]], TRIM, { n: [1, 0, 0] });
       sub.poly([[wa1, sill, zi], [wa1, sill, zo], [wa1, head, zo], [wa1, head, zi]], TRIM, { n: [-1, 0, 0] });
-      sub.poly([[wa0, sill, zi], [wa1, sill, zi], [wa1, sill, zo], [wa0, sill, zo]], TRIM, { n: [0, 1, 0] });
+      sub.poly([[wa0, sill, mz - 0.05], [wa1, sill, mz - 0.05], [wa1, sill, zo], [wa0, sill, zo]], TRIM, { n: [0, 1, 0] });   // the stool covers the rest
       sub.poly([[wa0, head, zi], [wa1, head, zi], [wa1, head, zo], [wa0, head, zo]], TRIM, { n: [0, -1, 0] });
       sub.poly([[A0, TOP, zi], [A1, TOP, zi], [A1, TOP, zo], [A0, TOP, zo]], 'siding', { n: [0, 1, 0] });
       const w = { x0: A0, x1: A1, z0: mz, z1: mz, y: [F - 0.6, TOP], ops: [], t, ext: true };
@@ -447,16 +467,18 @@ function bowWindow(b, glass) {
 
 // ======================================================= floors & ceilings ===
 function floorsAndCeilings(b, glass) {
-  const noFloor = new Set(['foyer', 'rear', 'stcl']);
-  const noCeil = new Set(['stcl', 'rcl']);
+  const ceilDone = [];                                // flat ceilings so far [y, rect]: later rooms don't repeat them
   for (const r of L.ROOMS) {
     for (const [x0, x1, z0, z1] of r.rects) {
-      if (!noFloor.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
-      if (noCeil.has(r.id)) continue;
+      if (!NO_FLOOR.has(r.id)) b.poly([[x0, r.h[0], z0], [x1, r.h[0], z0], [x1, r.h[0], z1], [x0, r.h[0], z1]], r.floor, { n: [0, 1, 0], chart: 'floor' + r.h[0] });
+      if (NO_CEIL.has(r.id)) continue;
       const holes = L.SKYLIGHTS.filter(([a0, a1, c0, c1]) => a0 >= x0 && a1 <= x1 && c0 >= z0 && c1 <= z1 && r.h[1] === L.MAIN_CEIL);
       const cy = z => (r.slope ? L.annexCeil(z) : r.h[1]);
       const k = Math.hypot(1, L.ANNEX_SLOPE), cn = r.slope ? [0, -1 / k, L.ANNEX_SLOPE / k] : [0, -1, 0];
-      for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], holes)) {
+      const done = r.slope ? [] : ceilDone.filter(([y]) => Math.abs(y - r.h[1]) < 1e-6).map(([, q]) => q);
+      if (!r.slope) ceilDone.push([r.h[1], [x0, x1, z0, z1]]);
+      for (const [a0, a1, c0, c1] of rectMinus([x0, x1, z0, z1], [...holes, ...done])) {
+        if (a1 - a0 < 1e-3 || c1 - c0 < 1e-3) continue;
         b.poly([[a0, cy(c0), c0], [a1, cy(c0), c0], [a1, cy(c1), c1], [a0, cy(c1), c1]], 'ceiling', { n: cn, chart: r.slope ? 'slope' : 'ceil' + r.h[1] });
       }
     }
@@ -634,6 +656,20 @@ function flightSteps(f) {
   return out;
 }
 const OPEN_W = 0.2;   // knee wall half-thickness the open side of a flight runs over
+// Plan rects [x0,x1,z0,z1] of the room floors and stair treads whose top is at height y.
+function floorRectsAt(y) {
+  const out = [];
+  for (const r of L.ROOMS) if (!NO_FLOOR.has(r.id) && Math.abs(r.h[0] - y) < 1e-6) out.push(...r.rects);
+  for (const f of L.FLIGHTS) {
+    const x0 = f.r[0] - (f.open < 0 ? OPEN_W + 0.05 : 0), x1 = f.r[1] + (f.open > 0 ? OPEN_W + 0.05 : 0);
+    for (const s of flightSteps(f)) {
+      if (Math.abs(s.top - y) > 1e-6) continue;
+      const nose = s.upper === s.zb ? -0.09 : 0.09, zf = s.upper === s.zb ? s.za : s.zb;
+      out.push([x0, x1, Math.min(s.za, zf + nose), Math.max(s.zb, zf + nose)]);
+    }
+  }
+  return out;
+}
 
 function stairs(b) {
   for (const f of L.FLIGHTS) {
@@ -720,7 +756,12 @@ function stairs(b) {
       b.poly([[k.x - T, 0, h.z1], [k.x + T, 0, h.z1], [k.x + T, yt, h.z1], [k.x - T, yt, h.z1]], mat, { n: [0, 0, -1] });
     }
     for (const g of segs) {
-      if (g.cap) b.poly([[k.x - T, g.top, g.za], [k.x + T, g.top, g.za], [k.x + T, g.top, g.zb], [k.x - T, g.top, g.zb]], TRIM, { n: [0, 1, 0] });
+      // cap, except where a floor or a tread at the same height already runs over the wall (coplanar)
+      if (g.cap) {
+        for (const [a0, a1, c0, c1] of rectMinus([k.x - T, k.x + T, g.za, g.zb], floorRectsAt(g.top))) {
+          if (a1 - a0 > 1e-3 && c1 - c0 > 1e-3) b.poly([[a0, g.top, c0], [a1, g.top, c0], [a1, g.top, c1], [a0, g.top, c1]], TRIM, { n: [0, 1, 0] });
+        }
+      }
       b.collider(k.x - T, k.x + T, 0, g.top, g.za, g.zb);
     }
   }
